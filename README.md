@@ -31,13 +31,13 @@
 ### Windows
 如果身处 Windows 平台，以管理员或其他拥有适当权限的身份打开 PowerShell 并执行：
 ```powershell
-iwr https://raw.githubusercontent.com/UnbalancedCat/IPGW-Meta/master/install.ps1 -useb | iex
+irm https://raw.githubusercontent.com/UnbalancedCat/IPGW-Meta/main/install.ps1 -useb | iex
 ```
 
 ### Linux / macOS / FreeBSD
 打开受支持的 Shell 终端，直接通过 cURL 一键拉取安装：
 ```shell
-curl -fsSL https://raw.githubusercontent.com/UnbalancedCat/IPGW-Meta/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/UnbalancedCat/IPGW-Meta/main/install.sh | sudo sh
 ```
 
 ### 手动编译 (开发者/其他环境)
