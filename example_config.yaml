@@ -1,0 +1,18 @@
+app:
+  # 日志级别: 可调整为 debug, info, warn, error
+  log_level: info
+  
+  # 渲染效果:
+  # charm-color: 带颜色格式化 (推荐)
+  # charm-plain: 仅保留缩排，剔除着色 (终端无法染色时)
+  # native: 原生纯文本
+  log_style: charm-color
+
+accounts:
+  # 此处用于存放被 base64 加密后的网关多账号及密码凭证
+  # 建议使用 `ipgw config account add -u [学号] -p [密码]` 命令自动生成，而非手动修改。
+  - username: ""
+    password: ""
+
+# 当前激活的默认账号（执行免密登录时自动调用的账号）
+default_account: ""
