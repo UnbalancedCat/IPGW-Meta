@@ -16,6 +16,7 @@
 
 - **协议级认证实现**：通过解析 CAS 动态票据（lt/execution）并应用基于 `crypto/rsa` 的等效前端加密规范，实现直接通过 HTTP 请求完成深澜（Srun）系统认证。
 - **多账号与会话管理**：支持本地多账号凭证存储。登录请求前将调用网关 API 查询设备在线状态，若检测到其他账号的存活会话，会自动发起下线请求并切换登入目标账号。
+- **多网口绑定与探测**：支持通过 `--bind-ip` 参数指定出站流量的源 IPv4 地址，适用于拥有多网卡的设备。`ipgw info --all` 可并发探测所有网口的校园网连接状态。通过 `net.Dialer.LocalAddr` 实现，跨平台可用且无需管理员权限。
 - **IPv4 强制路由**：通过 Hook `net.DialContext` 绑定 IPv4 连接，规避双栈网络下因部分 IPv6 寻址导致的网络认证异常。
 - **配置分级加载**：优先在操作系统标准配置目录（如 Windows AppData、Linux `~/.config` 等）存取配置，在无权限环境下可降级至可执行文件同级目录读写。
 - **结构化日志输出**：集成 `charmbracelet/log` 提供日志分级输出功能，支持使用 `charm-color` 彩色高亮或 `native` 纯文本格式以便调试。
@@ -59,31 +60,43 @@ go build -trimpath -ldflags "-s -w" -o ipgw ./cmd/ipgw/main.go
 
 ## 快速开始
 
-保存账号信息 (密码经过基础编码防窥视)
+保存账号信息（密码经过 Base64 编码存储）
 
 ```shell
 ipgw config account add -u "学号" -p "密码" --default
 ```
 
-一键极速登入校园网
+登录校园网
 
 ```shell
 ipgw login
 ```
 
-一键获取当前套餐使用情况及余额
+查看当前套餐使用情况及余额
 
 ```shell
 ipgw info
 ```
 
-快速断开校园网连接
+探测所有网口的校园网连接状态（适用于多网卡设备）
+
+```shell
+ipgw info --all
+```
+
+通过指定源 IP 登录（适用于多网口环境）
+
+```shell
+ipgw login --bind-ip 10.166.x.x
+```
+
+断开校园网连接
 
 ```shell
 ipgw logout
 ```
 
-> **提示：** 更多高级技巧（如多账户智能切换、远程强踢所有已登录设备下线、详尽的 Debug 排雷模式等）请参阅 [**API 手册 (进阶使用)**](./API.md)。
+> **提示：** 更多用法（如多账号切换、全端设备下线、指定网口操作、Debug 日志等）请参阅 [API 手册](./API.md)。
 
 ---
 

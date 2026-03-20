@@ -35,7 +35,7 @@ var kickCmd = &cobra.Command{
 		user := acc.Username
 		pass := acc.GetDecryptedPassword()
 
-		h := handler.NewIPGWHandler()
+		h := handler.NewIPGWHandler(bindIP)
 		utils.Log.Info("正在通过统一认证验证身份以获取下线权限...")
 
 		// 先进行一轮静默登录，刷新 CookieJar 中的 mysession 会话

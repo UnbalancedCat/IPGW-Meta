@@ -57,3 +57,34 @@ func NewNetworkClient() *http.Client {
 		Timeout:   15 * time.Second, // 限制统一网络超时防进程挂死
 	}
 }
+
+// NewBoundNetworkClient 创建绑定了指定源 IP 的 HTTP 客户端。
+// 通过设置 net.Dialer.LocalAddr 实现跨平台的网口绑定（Windows/Linux/macOS 均可用，无需 root 权限）。
+func NewBoundNetworkClient(localIP string) *http.Client {
+	jar, _ := cookiejar.New(nil)
+	srcIP := net.ParseIP(localIP)
+
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+		LocalAddr: &net.TCPAddr{IP: srcIP},
+	}
+
+	transport := &http.Transport{
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp4", addr)
+		},
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	return &http.Client{
+		Transport: &userAgentTransport{rt: transport},
+		Jar:       jar,
+		Timeout:   15 * time.Second,
+	}
+}
