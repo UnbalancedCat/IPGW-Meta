@@ -15,11 +15,17 @@ var (
 	verbose     bool
 	configPath  string
 	showVersion bool
+	bindIP      string
 
 	Version = "0.1.0"
 	Build   = "unknown"
 	Repo    = "unknown"
 )
+
+// GetBindIP 返回用户通过 --bind-ip 指定的源 IP 地址
+func GetBindIP() string {
+	return bindIP
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "ipgw",
@@ -34,7 +40,7 @@ var rootCmd = &cobra.Command{
 				currVer, _ := semver.NewVersion(Version)
 				latestVer, _ := semver.NewVersion(rel.TagName)
 				if latestVer != nil && currVer != nil && latestVer.GreaterThan(currVer) {
-					fmt.Printf("\n✨ 发现新版本 %s！请执行 'ipgw update' 进行无缝热更新。\n", rel.TagName)
+					fmt.Printf("\n发现新版本 %s, 请执行 'ipgw update' 进行无缝热更新。\n", rel.TagName)
 				}
 			}
 			os.Exit(0)
@@ -100,6 +106,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "显示详细的 debug 请求日志 (无视配置文件)")
 	rootCmd.PersistentFlags().BoolVarP(&showVersion, "version", "V", false, "显示当前程序版本")
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "指定自定义配置文件的绝对或相对路径")
+	rootCmd.PersistentFlags().StringVar(&bindIP, "bind-ip", "", "指定出站流量绑定的源 IPv4 地址 (用于多网口环境)")
 
 	// 覆写默认的 help flag 翻译
 	rootCmd.InitDefaultHelpFlag()
@@ -110,3 +117,4 @@ func init() {
 		flag.Usage = "显示帮助信息"
 	}
 }
+

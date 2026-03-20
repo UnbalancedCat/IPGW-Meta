@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"ipgw-meta/pkg/model"
@@ -27,10 +28,17 @@ type IPGWHandler struct {
 	client *http.Client
 }
 
-// NewIPGWHandler 生成核心网关处理器
-func NewIPGWHandler() *IPGWHandler {
+// NewIPGWHandler 生成核心网关处理器。
+// 可选传入一个源 IP 地址以绑定出站网口（跨平台，通过 net.Dialer.LocalAddr 实现）。
+func NewIPGWHandler(bindIP ...string) *IPGWHandler {
+	var client *http.Client
+	if len(bindIP) > 0 && bindIP[0] != "" {
+		client = utils.NewBoundNetworkClient(bindIP[0])
+	} else {
+		client = utils.NewNetworkClient()
+	}
 	return &IPGWHandler{
-		client: utils.NewNetworkClient(),
+		client: client,
 	}
 }
 
@@ -210,10 +218,12 @@ func (h *IPGWHandler) GetNetworkStatus() (inCampus bool, isLoggedIn bool, userna
 	utils.Log.Debug("试图连接深澜网关内部接口检测校园网环境...")
 
 	req, _ := http.NewRequest("GET", "http://ipgw.neu.edu.cn/cgi-bin/rad_user_info", nil)
-	client := utils.NewNetworkClient()
-	client.Timeout = 3 * time.Second
+	// 使用 h.client 而非新建局部客户端，确保 --bind-ip 生效
+	origTimeout := h.client.Timeout
+	h.client.Timeout = 3 * time.Second
 
-	resp, err := client.Do(req)
+	resp, err := h.client.Do(req)
+	h.client.Timeout = origTimeout // 恢复原超时
 	if err != nil {
 		utils.Log.Debug("访问网关 API 失败，推断未在校园网环境中", "error", err)
 		return false, false, "", "", nil
@@ -266,10 +276,12 @@ func (h *IPGWHandler) GetNetworkStatus() (inCampus bool, isLoggedIn bool, userna
 // FetchGatewayInfo 只从底层网关 API 抓取当前连接设备的流量状态
 func (h *IPGWHandler) FetchGatewayInfo() (*model.GatewayInfo, error) {
 	req, _ := http.NewRequest("GET", "http://ipgw.neu.edu.cn/cgi-bin/rad_user_info", nil)
-	client := utils.NewNetworkClient()
-	client.Timeout = 3 * time.Second
+	// 使用 h.client 而非新建局部客户端，确保 --bind-ip 生效
+	origTimeout := h.client.Timeout
+	h.client.Timeout = 3 * time.Second
 
-	resp, err := client.Do(req)
+	resp, err := h.client.Do(req)
+	h.client.Timeout = origTimeout // 恢复原超时
 	if err != nil {
 		return nil, fmt.Errorf("网关 API 请求失败 (可能未连接校园网): %w", err)
 	}
@@ -333,4 +345,42 @@ func (h *IPGWHandler) DropAllConnections(cookie string) error {
 	}
 
 	return fmt.Errorf("网关返回异常响应: %s", bodyStr)
+}
+
+// ScanAllInterfaces 并发扫描系统所有网口，为每个 IPv4 地址创建绑定客户端并探测校园网状态。
+func (h *IPGWHandler) ScanAllInterfaces() ([]utils.InterfaceStatus, error) {
+	ifaces, err := utils.ListIPv4Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ifaces) == 0 {
+		return nil, errors.New("未检测到任何可用的网络接口")
+	}
+
+	var wg sync.WaitGroup
+	results := make([]utils.InterfaceStatus, len(ifaces))
+
+	for i, iface := range ifaces {
+		wg.Add(1)
+		go func(idx int, ifStatus utils.InterfaceStatus) {
+			defer wg.Done()
+
+			probeHandler := NewIPGWHandler(ifStatus.IP)
+			inCampus, isLogged, username, gatewayIP, err := probeHandler.GetNetworkStatus()
+			if err != nil {
+				ifStatus.Error = err.Error()
+			} else {
+				ifStatus.InCampus = inCampus
+				ifStatus.IsLogged = isLogged
+				ifStatus.Username = username
+				ifStatus.GatewayIP = gatewayIP
+			}
+
+			results[idx] = ifStatus
+		}(i, iface)
+	}
+
+	wg.Wait()
+	return results, nil
 }

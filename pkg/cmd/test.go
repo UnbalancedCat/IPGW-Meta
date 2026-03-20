@@ -1,4 +1,4 @@
-﻿package cmd
+package cmd
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ var testCmd = &cobra.Command{
 	Short: "检测网络情况并测试外网连通性",
 	Long:  "使用该命令以探查是否已连接校园网，并在活跃的身份下连接了互联网。提供双重校验：深澜内网接口验证及公网探测",
 	Run: func(cmd *cobra.Command, args []string) {
-		h := handler.NewIPGWHandler()
+		h := handler.NewIPGWHandler(bindIP)
 
 		utils.Log.Info("开始检测网络情况...")
 		inCampus, isLoggedIn, user, ip, err := h.GetNetworkStatus()

@@ -63,7 +63,7 @@ var loginCmd = &cobra.Command{
 			return
 		}
 
-		h := handler.NewIPGWHandler()
+		h := handler.NewIPGWHandler(bindIP)
 
 		utils.Log.Debug("执行 Smart Login，检查当前设备登录状态...")
 		info, err := h.FetchGatewayInfo()

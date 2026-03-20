@@ -28,7 +28,7 @@ var logoutCmd = &cobra.Command{
 		}
 
 		utils.Log.Info("准备向服务大厅发起设备脱网信令...", "学号", u)
-		h := handler.NewIPGWHandler()
+		h := handler.NewIPGWHandler(bindIP)
 		if err := h.DoLogout(u); err != nil {
 			utils.Log.Error("断网失败: 注销请求非预期结束", "error", err)
 		} else {

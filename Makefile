@@ -15,6 +15,7 @@ PLATFORM_LIST = \
 	darwin-arm64 \
 	linux-386 \
 	linux-amd64 \
+	linux-arm64 \
 	linux-arm \
 	linux-mips64 \
 	linux-mips64le \
@@ -38,8 +39,11 @@ linux-386:
 linux-amd64:
 	GOARCH=amd64 GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
 
-linux-arm:
+linux-arm64:
 	GOARCH=arm64 GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+
+linux-arm:
+	GOARCH=arm GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
 
 linux-mips64:
 	GOARCH=mips64 GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
