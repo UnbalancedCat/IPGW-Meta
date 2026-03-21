@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	PublicKeyStr = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnjA28DLKXZzxbKmo9/1WkVLf1mr+wtLXLXt6sC4WiBCtsbzF5ewm7ARZeAdS3iZtqlYPn6IcUoOw42H8nAK/tfFcIb6dZ1K0atn0U39oWCGPzYuKtLJeMuNZiDXVuAXtojrckOjLW9B3gUnaNGLuIx0fYe66l0o9WjU2cGLNZQfiIxs2h00z1EA9IdSnVxiVQWSD+lsP3JZXh2TT287la4Y4603SQNKTK/QvXfcmccwTEd1IW6HwGxD6QrkInBiHisKWxmveN7UDSaQRZ/J97G0YC32pD38WT53izXeK0p/kU/X37VP555um1wVWFvPIuc9I7gMP1+hq5a+X6c++tQIDAQAB"
-	CASLoginURL  = "https://pass.neu.edu.cn/tpass/login?service=http%3A%2F%2Fipgw.neu.edu.cn%2Fsrun_portal_sso%3Fac_id%3D1"
+	DefaultPublicKeyStr = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnjA28DLKXZzxbKmo9/1WkVLf1mr+wtLXLXt6sC4WiBCtsbzF5ewm7ARZeAdS3iZtqlYPn6IcUoOw42H8nAK/tfFcIb6dZ1K0atn0U39oWCGPzYuKtLJeMuNZiDXVuAXtojrckOjLW9B3gUnaNGLuIx0fYe66l0o9WjU2cGLNZQfiIxs2h00z1EA9IdSnVxiVQWSD+lsP3JZXh2TT287la4Y4603SQNKTK/QvXfcmccwTEd1IW6HwGxD6QrkInBiHisKWxmveN7UDSaQRZ/J97G0YC32pD38WT53izXeK0p/kU/X37VP555um1wVWFvPIuc9I7gMP1+hq5a+X6c++tQIDAQAB"
+	CASLoginURL         = "https://pass.neu.edu.cn/tpass/login?service=http%3A%2F%2Fipgw.neu.edu.cn%2Fsrun_portal_sso%3Fac_id%3D1"
 )
 
 // IPGWHandler 处理具体的登录、注销等网关交互
@@ -48,7 +48,7 @@ func (h *IPGWHandler) DoLogin(username, password string) error {
 	// 忽略该步的超时不报错，对标 python 中的 pass
 	h.client.Get("http://ipgw.neu.edu.cn/srun_portal_pc?ac_id=1&theme=pro")
 
-	utils.Log.Debug("第一步：拉取统一身份认证（CAS）拦截参数")
+	utils.Log.Debug("拉取统一身份认证（CAS）拦截参数")
 	resp, err := h.client.Get(CASLoginURL)
 	if err != nil {
 		return fmt.Errorf("网络请求失败: %w", err)
@@ -72,8 +72,18 @@ func (h *IPGWHandler) DoLogin(username, password string) error {
 	}
 
 	utils.Log.Debug("提取出签发令牌", "lt", lt, "execution", execution)
-	utils.Log.Debug("第二步：对凭证密码进行公钥级 RSA 混淆包装")
-	rsaEncrypted, err := utils.RSAEncrypt(username+password, PublicKeyStr)
+
+	dynamicKey := h.extractDynamicPublicKey(doc)
+	finalPublicKey := DefaultPublicKeyStr
+	if dynamicKey != "" {
+		utils.Log.Debug("成功动态提取出 rsa 公钥", "key", dynamicKey[:20]+"...")
+		finalPublicKey = dynamicKey
+	} else {
+		utils.Log.Debug("未检测到动态公钥，使用预置硬编码公钥")
+	}
+
+	utils.Log.Debug("对凭证密码进行公钥级 RSA 混淆包装")
+	rsaEncrypted, err := utils.RSAEncrypt(username+password, finalPublicKey)
 	if err != nil {
 		return fmt.Errorf("RSA 密码加密失败: %w", err)
 	}
@@ -113,7 +123,7 @@ func (h *IPGWHandler) DoLogin(username, password string) error {
 
 	finalURL := loginResp.Request.URL.String()
 	if strings.Contains(finalURL, "srun_portal") || strings.Contains(finalURL, "cas_login") {
-		utils.Log.Debug("[+] 已成功抵达重定向页面！")
+		utils.Log.Debug("已成功抵达重定向页面！")
 
 		if capturedTicket == "" {
 			capturedTicket = loginResp.Request.URL.Query().Get("ticket")
@@ -383,4 +393,42 @@ func (h *IPGWHandler) ScanAllInterfaces() ([]utils.InterfaceStatus, error) {
 
 	wg.Wait()
 	return results, nil
+}
+
+// extractDynamicPublicKey 尝试从统一身份认证的 HTML 中提取 JS 并用正则抓取 publicKeyStr
+func (h *IPGWHandler) extractDynamicPublicKey(doc *goquery.Document) string {
+	var publicKey string
+	doc.Find("script").Each(func(i int, s *goquery.Selection) {
+		if publicKey != "" {
+			return
+		}
+		src, _ := s.Attr("src")
+		if src == "" || (!strings.Contains(src, "login") && !strings.Contains(src, "rsa")) {
+			return
+		}
+
+		// 构造完整 URL
+		var jsURL string
+		if strings.HasPrefix(src, "http") {
+			jsURL = src
+		} else if strings.HasPrefix(src, "/") {
+			jsURL = "https://pass.neu.edu.cn" + src
+		} else {
+			jsURL = "https://pass.neu.edu.cn/tpass/" + src
+		}
+
+		jsResp, err := h.client.Get(jsURL)
+		if err != nil {
+			return
+		}
+		defer jsResp.Body.Close()
+
+		if jsBytes, err := io.ReadAll(jsResp.Body); err == nil {
+			re := regexp.MustCompile(`publicKeyStr\s*=\s*['"](MIIBI.*?)['"]`)
+			if match := re.FindSubmatch(jsBytes); len(match) > 1 {
+				publicKey = string(match[1])
+			}
+		}
+	})
+	return publicKey
 }

@@ -23,7 +23,7 @@ func main() {
 
 	username := "xxxx"
 	password := "xxxx"
-	rsaEncrypted, _ := utils.RSAEncrypt(username+password, handler.PublicKeyStr)
+	rsaEncrypted, _ := utils.RSAEncrypt(username+password, handler.DefaultPublicKeyStr)
 
 	formData := url.Values{}
 	formData.Set("rsa", rsaEncrypted)
