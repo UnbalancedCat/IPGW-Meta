@@ -1,4 +1,3 @@
-﻿#!/usr/bin/env pwsh
 # edited from deno_install
 
 $ErrorActionPreference = 'Stop'
