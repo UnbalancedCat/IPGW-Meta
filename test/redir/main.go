@@ -16,7 +16,9 @@ import (
 func main() {
 	client := utils.NewNetworkClient()
 
-	resp, _ := client.Get(handler.CASLoginURL)
+	acID := "1"
+	casLoginURL := fmt.Sprintf("https://pass.neu.edu.cn/tpass/login?service=http%%3A%%2F%%2Fipgw.neu.edu.cn%%2Fsrun_portal_sso%%3Fac_id%%3D%s", acID)
+	resp, _ := client.Get(casLoginURL)
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	lt, _ := doc.Find("input[name=\"lt\"]").Attr("value")
 	execution, _ := doc.Find("input[name=\"execution\"]").Attr("value")
@@ -33,7 +35,7 @@ func main() {
 	formData.Set("execution", execution)
 	formData.Set("_eventId", "submit")
 
-	req, _ := http.NewRequest("POST", handler.CASLoginURL, strings.NewReader(formData.Encode()))
+	req, _ := http.NewRequest("POST", casLoginURL, strings.NewReader(formData.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	res, _ := client.Do(req)

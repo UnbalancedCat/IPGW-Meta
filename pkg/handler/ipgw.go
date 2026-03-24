@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -20,36 +21,129 @@ import (
 
 const (
 	DefaultPublicKeyStr = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnjA28DLKXZzxbKmo9/1WkVLf1mr+wtLXLXt6sC4WiBCtsbzF5ewm7ARZeAdS3iZtqlYPn6IcUoOw42H8nAK/tfFcIb6dZ1K0atn0U39oWCGPzYuKtLJeMuNZiDXVuAXtojrckOjLW9B3gUnaNGLuIx0fYe66l0o9WjU2cGLNZQfiIxs2h00z1EA9IdSnVxiVQWSD+lsP3JZXh2TT287la4Y4603SQNKTK/QvXfcmccwTEd1IW6HwGxD6QrkInBiHisKWxmveN7UDSaQRZ/J97G0YC32pD38WT53izXeK0p/kU/X37VP555um1wVWFvPIuc9I7gMP1+hq5a+X6c++tQIDAQAB"
-	CASLoginURL         = "https://pass.neu.edu.cn/tpass/login?service=http%3A%2F%2Fipgw.neu.edu.cn%2Fsrun_portal_sso%3Fac_id%3D1"
 )
 
 // IPGWHandler 处理具体的登录、注销等网关交互
 type IPGWHandler struct {
 	client *http.Client
+	bindIP string
 }
 
 // NewIPGWHandler 生成核心网关处理器。
 // 可选传入一个源 IP 地址以绑定出站网口（跨平台，通过 net.Dialer.LocalAddr 实现）。
 func NewIPGWHandler(bindIP ...string) *IPGWHandler {
 	var client *http.Client
+	var ip string
 	if len(bindIP) > 0 && bindIP[0] != "" {
-		client = utils.NewBoundNetworkClient(bindIP[0])
+		ip = bindIP[0]
+		client = utils.NewBoundNetworkClient(ip)
 	} else {
 		client = utils.NewNetworkClient()
 	}
 	return &IPGWHandler{
 		client: client,
+		bindIP: ip,
 	}
+}
+
+// detectFallbackAcID 根据绑定的网卡或通过 UDP 探针探测出站网卡名称，决定 fallback ac_id
+func (h *IPGWHandler) detectFallbackAcID() string {
+	localIP := h.bindIP
+	if localIP == "" {
+		if conn, err := net.Dial("udp", "8.8.8.8:80"); err == nil {
+			localIP = conn.LocalAddr().(*net.UDPAddr).IP.String()
+			conn.Close()
+		}
+	}
+
+	if localIP != "" {
+		ifaces, err := utils.ListIPv4Interfaces()
+		if err == nil {
+			for _, iface := range ifaces {
+				if iface.IP == localIP {
+					name := strings.ToLower(iface.Name)
+					if strings.Contains(name, "wifi") || strings.Contains(name, "wi-fi") || strings.Contains(name, "wlan") || strings.Contains(name, "无线") {
+						return "15"
+					}
+					return "1"
+				}
+			}
+		}
+	}
+	return "1"
+}
+
+// FetchAcID 动态获取当前所处网络环境的 ac_id
+func (h *IPGWHandler) FetchAcID() (string, error) {
+	req, err := http.NewRequest("GET", "http://ipgw.neu.edu.cn/", nil)
+	if err != nil {
+		return h.detectFallbackAcID(), err
+	}
+
+	var capturedAcID string
+	origCheckRedirect := h.client.CheckRedirect
+	h.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if id := req.URL.Query().Get("ac_id"); id != "" {
+			capturedAcID = id
+			return http.ErrUseLastResponse
+		}
+		if origCheckRedirect != nil {
+			return origCheckRedirect(req, via)
+		}
+		return nil
+	}
+
+	resp, err := h.client.Do(req)
+	h.client.CheckRedirect = origCheckRedirect // 恢复默认行为
+
+	if err != nil && !errors.Is(err, http.ErrUseLastResponse) {
+		return h.detectFallbackAcID(), err
+	}
+
+	if resp != nil {
+		defer resp.Body.Close()
+		// 有时重定向不会触发 CheckRedirect（例如已经处在最终页面）
+		if capturedAcID == "" && resp.Request != nil && resp.Request.URL != nil {
+			capturedAcID = resp.Request.URL.Query().Get("ac_id")
+		}
+
+		// 有的深澜网关采用 200 OK + JS 跳转脚本，用正则兜底提取
+		if capturedAcID == "" {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			re := regexp.MustCompile(`ac_id=(\d+)`)
+			if match := re.FindStringSubmatch(string(bodyBytes)); len(match) > 1 {
+				capturedAcID = match[1]
+			}
+		}
+	}
+
+	if capturedAcID == "" {
+		fallback := h.detectFallbackAcID()
+		utils.Log.Warn("无法发现活动中的 ac_id，按照网卡类型兜底", "fallback_ac_id", fallback)
+		return fallback, errors.New("动态获取 ac_id 失败")
+	}
+
+	return capturedAcID, nil
 }
 
 // DoLogin 执行完整的登录流程
 func (h *IPGWHandler) DoLogin(username, password string) error {
 	utils.Log.Debug("正在初始化网关底层环境...")
+	
+	acID, err := h.FetchAcID()
+	if err != nil {
+		utils.Log.Warn("动态获取 ac_id 失败，退化为使用默认值", "ac_id", acID, "err", err)
+	} else {
+		utils.Log.Debug("动态获取到 ac_id", "ac_id", acID)
+	}
+
+	casLoginURL := fmt.Sprintf("https://pass.neu.edu.cn/tpass/login?service=http%%3A%%2F%%2Fipgw.neu.edu.cn%%2Fsrun_portal_sso%%3Fac_id%%3D%s", acID)
+
 	// 忽略该步的超时不报错，对标 python 中的 pass
-	h.client.Get("http://ipgw.neu.edu.cn/srun_portal_pc?ac_id=1&theme=pro")
+	h.client.Get(fmt.Sprintf("http://ipgw.neu.edu.cn/srun_portal_pc?ac_id=%s&theme=pro", acID))
 
 	utils.Log.Debug("拉取统一身份认证（CAS）拦截参数")
-	resp, err := h.client.Get(CASLoginURL)
+	resp, err := h.client.Get(casLoginURL)
 	if err != nil {
 		return fmt.Errorf("网络请求失败: %w", err)
 	}
@@ -97,7 +191,7 @@ func (h *IPGWHandler) DoLogin(username, password string) error {
 	formData.Set("execution", execution)
 	formData.Set("_eventId", "submit")
 
-	req, err := http.NewRequest("POST", CASLoginURL, strings.NewReader(formData.Encode()))
+	req, err := http.NewRequest("POST", casLoginURL, strings.NewReader(formData.Encode()))
 	if err != nil {
 		return err
 	}
@@ -146,7 +240,7 @@ func (h *IPGWHandler) DoLogin(username, password string) error {
 		utils.Log.Debug("成功截获 Ticket: ", "ticket", capturedTicket)
 		utils.Log.Info("向深澜底层 API 发送强制激活指令...")
 
-		apiURL := fmt.Sprintf("https://ipgw.neu.edu.cn/v1/srun_portal_sso?ac_id=1&ticket=%s", capturedTicket)
+		apiURL := fmt.Sprintf("https://ipgw.neu.edu.cn/v1/srun_portal_sso?ac_id=%s&ticket=%s", acID, capturedTicket)
 		apiReq, _ := http.NewRequest("GET", apiURL, nil)
 		apiReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 		apiReq.Header.Set("Referer", finalURL)
@@ -203,11 +297,12 @@ func (h *IPGWHandler) TestInternet() error {
 
 // DoLogout 向网络核心交换机抛出强制断联注销请求
 func (h *IPGWHandler) DoLogout(username string) error {
+	acID, _ := h.FetchAcID() // 如果失败会使用探测兜底
 	logoutURL := "https://ipgw.neu.edu.cn/cgi-bin/srun_portal?action=logout&username=" + username
 	req, _ := http.NewRequest("GET", logoutURL, nil)
 
 	// Srun 典型的假请求头要求骗过 WAF
-	req.Header.Set("Referer", "https://ipgw.neu.edu.cn/srun_portal_success?ac_id=1")
+	req.Header.Set("Referer", fmt.Sprintf("https://ipgw.neu.edu.cn/srun_portal_success?ac_id=%s", acID))
 
 	utils.Log.Debug("发送底层深澜注销指令", "URL", logoutURL)
 	resp, err := h.client.Do(req)
