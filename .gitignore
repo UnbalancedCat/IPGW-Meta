@@ -1,4 +1,6 @@
 build/
 release/
-docs/
+.codex-go-cache/
+.codex-go-mod/
+/docs/_site/
 *.exe

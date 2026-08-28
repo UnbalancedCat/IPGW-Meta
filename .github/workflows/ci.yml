@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  quality:
+    name: Documentation, vet, and secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check documentation contracts
+        run: go run ./cmd/doccheck --check
+      - name: Vet
+        run: go vet ./...
+      - name: Install pinned gitleaks
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+      - name: Test project secret detection rules
+        run: bash scripts/test-gitleaks.sh
+      - name: Scan complete Git history for secrets
+        run: '"$(go env GOPATH)/bin/gitleaks" git --config=.gitleaks.toml --redact --verbose --log-opts="--all --full-history --reflog" .'
+
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run tests
+        run: go test ./...
+
+  race:
+    name: Race detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run race-enabled tests
+        run: go test -race ./...
+
+  cross-build:
+    name: Cross-build six supported targets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build darwin, linux, and windows for amd64 and arm64
+        run: make all BUILD_DIR=build/cross VERSION=ci-${{ github.sha }}
+      - name: Verify all three entry points for every target
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+            test -s "build/cross/$target/ipgw"
+            test -s "build/cross/$target/ipgw-meta"
+            test -s "build/cross/$target/ipgw-legacy"
+          done
+          for target in windows-amd64 windows-arm64; do
+            test -s "build/cross/$target/ipgw.exe"
+            test -s "build/cross/$target/ipgw-meta.exe"
+            test -s "build/cross/$target/ipgw-legacy.exe"
+          done

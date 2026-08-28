@@ -1,0 +1,47 @@
+title = "IPGW-Meta secret scanning"
+
+[extend]
+useDefault = true
+
+# Keep the default rules intact. Add only narrowly scoped, reviewed allowlists;
+# authentication fixtures and evidence are never broadly exempted.
+
+[[rules]]
+id = "neu-cas-service-ticket"
+description = "NEU CAS service ticket"
+regex = '''(?i)(?:^|[^A-Za-z0-9])(ST-[0-9]+-[A-Za-z0-9._~%+-]{16,})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["ST-"]
+
+[[rules]]
+id = "neu-cas-ticket-granting-ticket"
+description = "NEU CAS ticket-granting ticket"
+regex = '''(?i)(?:^|[^A-Za-z0-9])(TGT-[0-9]+-[A-Za-z0-9._~%+-]{16,})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["TGT-"]
+
+[[rules]]
+id = "neu-campus-session-cookie"
+description = "NEU campus session or CSRF cookie"
+regex = '''(?i)(?:^|[;"'\s])(?:mysession|phpsessid_[0-9]+|csrf-[0-9]+)\s*=\s*([A-Za-z0-9][A-Za-z0-9._~%+/-]{19,}={0,2})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["mysession", "phpsessid_", "csrf-"]
+
+[[rules]]
+id = "neu-csrf-token-material"
+description = "CSRF token in header, query, form, or structured field"
+regex = '''(?i)(?:(?:x-csrf-token|x-csrftoken|x-xsrf-token)["']?\s*(?::|=|,)\s*["']?|[?&](?:csrf|csrf_token|csrf-token)=|["'](?:csrf|csrf_token|csrf-token)["']\s*(?::|=|,)\s*["']?)([A-Za-z0-9][A-Za-z0-9._~%+/-]{19,}={0,2})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["csrf", "CSRF", "xsrf", "XSRF"]
+
+[[rules]]
+id = "neu-ticket-query-material"
+description = "Long authentication ticket in a URL query"
+regex = '''(?i)[?&](?:ticket|service_ticket)=([A-Za-z0-9][A-Za-z0-9._~%+/-]{19,}={0,2})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["ticket=", "service_ticket="]
