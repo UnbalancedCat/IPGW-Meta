@@ -11,10 +11,10 @@ snapshot_at: 2026-08-28
 
 ## 当前执行
 
-- 执行者：无（PR #1 bootstrap merge / `required_signatures` 安全停点）。
-- 工作包：`WP-M0-RENAME-GOVERN`（`in_progress`）。
-- 修改边界：本窗口已完成独立、docs-first 的 macOS trusted-system-alias blocker、SSH-signed commits、普通 fast-forward push、实现 head 六项 CI 复核，以及获批的 main/tag ruleset 创建；未 merge PR，未 force-push、创建 release/tag/资产、修改校园网会话或处理隔离工作区/备份。
-- 停止条件：冻结提交 `38fadd1bef3692f52a8c9a1b67db45819b57112c` 未签名；在维护者明确批准 bootstrap 合入策略前，不得 merge、改写分支拓扑或提前启用会阻断当前 PR 的 `required_signatures`。任意 refs/ruleset 漂移、签名或 CI 失败同样停止。
+- 执行者：Codex（PR #1 bootstrap merge、`required_signatures` 与 `WP-BASELINE-VERIFY`）。
+- 工作包：`WP-M0-RENAME-GOVERN`（`in_progress`）；治理核验完成后进入只读 `WP-BASELINE-VERIFY`。
+- 修改边界：维护者已于 2026-08-28 批准保留拓扑的普通 PR merge；本窗口只允许签名交接提交与普通分支 push、PR #1 普通 merge、main ruleset 增补 `required_signatures`、合入后只读 baseline 门禁，以及通过独立签名 PR 落盘最终治理状态。禁止 force-push、squash/rebase、创建 release/tag/资产、修改校园网会话或处理隔离工作区、敏感备份与 rewrite mirror。
+- 停止条件：任意 repo ID/name、refs/tag SHA、PR head/base、六项 required check 名称/来源、ruleset 内容或权限漂移；最新 head 的签名/CI 失败；GitHub 生成的 merge commit 未验证为 `valid`；baseline 任一门禁失败。发生这些情况时停止，不放宽保护规则或修改实现来追绿。
 
 ## 已完成
 
@@ -34,11 +34,12 @@ snapshot_at: 2026-08-28
 ## 阻塞
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
-- PR #1 仍为 open、未 merge；macOS blocker 已解决。任何后续状态/交接提交在普通 push 后都必须以自身 head 完成六项 CI，不能沿用实现 head 的成功状态冒充最新门禁。
-- 冻结提交 `38fadd1bef3692f52a8c9a1b67db45819b57112c` 本身未签名，且是 `origin/main..codex/v1-freeze` 范围内唯一未签名 commit；在合入前直接启用 `required_signatures` 会阻断普通 merge，治理 bootstrap 顺序必须显式处理，不能静默改用 squash 或 rebase 改写拓扑。
+- 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
+- PR #1 当前仍为 open、未 merge；任何新增交接提交在普通 push 后都必须以自身 head 完成六项 CI，不能沿用旧 head 的成功状态冒充最新门禁。
+- 冻结提交 `38fadd1bef3692f52a8c9a1b67db45819b57112c` 本身未签名，且是 `origin/main..codex/v1-freeze` 范围内唯一未签名 commit；已批准的 bootstrap 顺序是先普通 merge 并验证 GitHub merge commit 签名，再立即启用 `required_signatures`，不改写现有拓扑。
 
 ## 下一步
 
-- 维护者明确选择并批准 PR #1 的 bootstrap 合入策略；不得默认为 squash/rebase，不得使用普通或 lease force-push。
-- 获批合入完成后立即把 `required_signatures` 加入 main ruleset，复核 main、rulesets、PR/merge SHA 和 tag refs，再完成 `WP-M0-RENAME-GOVERN`。
-- 维护者另行联系 GitHub Support 清理三个仍可 API 访问的旧 commit；该事项完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`。治理工作包完成后下一工作包为 `WP-BASELINE-VERIFY`。
+- 将本交接更新作为 SSH-signed commit 普通 push 到 PR #1，等待该精确 head 的六项 CI 全部成功并复核来源为 Actions App `15368`。
+- 对 PR #1 执行保留拓扑的普通 merge；确认 merge commit 双亲、GitHub `verified=true, reason=valid`、main 与 tag refs 后，立即把 `required_signatures` 加入 main ruleset并读回核验。
+- 从合入后的精确 `origin/main` 执行只读 `WP-BASELINE-VERIFY`；通过后用独立签名 PR 更新正式状态与交接。三个旧对象完成 GitHub Support 清理前，[`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`；下一实现工作包为 `WP-M2-CONFIG-CLOSE`。
