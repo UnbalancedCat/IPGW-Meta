@@ -54,7 +54,7 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 - 冻结 tree 原已统一使用 `github.com/UnbalancedCat/ipgw-meta`：Go module/import、源码 URL、文档、workflow、安装器和 release script 中没有旧 GitHub 仓库路径残留，因此本窗口没有对品牌名、旧工作区隔离路径、备份路径或 Windows 安装目录做机械大小写替换。
 - 改名后已 fresh clone 到独立新目录 `D:\project\Go\ipgw-meta-govern-verify-20260828-r2`。该 clone 的 `main` 为 `5ad8c1fa05102fbcb249e7195f4801563b3d44a5`，验证分支为 `codex/v1-freeze` / `38fadd1bef3692f52a8c9a1b67db45819b57112c`，冻结 tree 为 `9b3765dba53fe8e98d4c3f9b7c5d78c6edb26b91`；refs、tag 类型、`fsck`、test/race/vet/doccheck、合成 gitleaks canary、全历史/reflog 与安全 tree scan 均通过，最终状态 clean。
 - 当前权威工作区的 test/race/vet/doccheck、`fsck`、全历史/reflog 和最终 tracked-worktree 安全 tree scan 也通过；固定 gitleaks `8.30.1` 的上游 release assets 已按 GitHub digest 与官方 checksums 核验后仅在临时目录用于本次扫描。
-- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：post-clean commit `15fb31db059b660e03cf5460483cbf2f0aa0cbda` 已包含 SSH signature，并以普通 fast-forward push 更新远端 `codex/v1-freeze`；但 GitHub 首次验证返回 `verified=false, reason=unknown_key`，因此没有创建 PR 或 ruleset，也没有改写或 force-push 该 commit。维护者现已确认把对应 Ed25519 公钥登记为 GitHub Signing key；仍须创建新的 signed follow-up commit，并以 GitHub API 的 `verified=true, reason=valid` 作为 PR bootstrap 硬门禁。远端尚无 CI check-run；required checks 未满足“过去 7 天内成功运行”的可用性前置，main/tag ruleset 均未创建，main 仍未受保护。
+- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：维护者登记 Signing key 后创建的 follow-up commit `c562483cc21239246367d65a08687e20ea9c5356` 含 SSH signature，经普通 fast-forward push 后由 GitHub API 验证为 `verified=true, reason=valid`；PR #1 已从 `codex/v1-freeze` 打开到 `main`。首次 CI run `33166812911` 实证了六项精确 context 均来自 GitHub Actions App `15368`，其中五项成功，`Tests (macos-latest)` 因系统临时路径 `/var/folders/...` 的 `/var` symlink 被 Unix credential 路径遍历拒绝而失败。required checks 尚未全绿，故 main/tag ruleset 均未创建，main 仍未受保护；不得通过降低检查或提前启用 ruleset 绕过该失败。
 
 ## 2026-08-27 本地验收结果
 
@@ -66,7 +66,7 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：仓库小写改名、canonical `origin`、改名后 fresh-clone 复核、SSH-signed post-clean commit、普通分支 push 及维护者侧 GitHub signing-key 登记已完成；API-valid signed follow-up commit、PR、CI context 实证、main 严格 ruleset 与 `v*` tag ruleset 尚待完成。
+- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：仓库小写改名、canonical `origin`、改名后 fresh-clone 复核、API-valid SSH-signed follow-up commit、普通分支 push、PR #1 与六项 CI context 实证已完成；macOS test gate、main 严格 ruleset 与 `v*` tag ruleset 尚待完成。macOS 失败涉及 `WP-M2-CONFIG-CLOSE` 的 `internal/config`/迁移测试边界，需维护者明确授权当前工作包的最小修复或调整工作包顺序。
 - 尚未完成 Windows/Linux/macOS 的实际安装、升级、回滚 smoke test；Linux/macOS 的权限与锁行为目前只有交叉编译及 Unix 实现测试源码，仍需相应平台实际执行。
 - 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。

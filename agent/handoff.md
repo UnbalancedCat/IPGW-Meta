@@ -11,10 +11,10 @@ snapshot_at: 2026-08-28
 
 ## 当前执行
 
-- 执行者：Codex（signing-key 登记后的验证与 PR bootstrap）。
+- 执行者：无（macOS CI 门禁安全停点）。
 - 工作包：`WP-M0-RENAME-GOVERN`（`in_progress`）。
-- 修改边界：本窗口已完成 GitHub 小写改名、canonical `origin`、独立 fresh-clone 复核、SSH-signed post-clean commit `15fb31db059b660e03cf5460483cbf2f0aa0cbda` 及普通 fast-forward branch push；维护者现已确认把对应公钥添加为 GitHub Signing key，本次只允许对现有两项事实更新创建新的 signed follow-up commit，再以普通 fast-forward push 验证 GitHub 状态。PR 和 ruleset 尚未执行。
-- 停止条件：新提交的 GitHub verification 必须为 `verified=true, reason=valid`；任意 ref/SHA 漂移、未知 PR/ruleset、签名失败或权限不足均立即停止。不得 force-push、改写既有 commit，或凭 YAML 名称强设 ruleset。
+- 修改边界：本窗口已完成 GitHub 小写改名、canonical `origin`、独立 fresh-clone 复核、登记后的 SSH-signed follow-up commit `c562483cc21239246367d65a08687e20ea9c5356`、普通 fast-forward branch push、GitHub `verified=true, reason=valid` 门禁及 PR #1 bootstrap；未修改产品/测试代码，main/tag ruleset 均未创建。
+- 停止条件：PR CI run `33166812911` 的六项精确 context 已实证为 GitHub Actions App `15368`，但 `Tests (macos-latest)` 失败，只有 5/6 成功；不得在 required checks 全绿前启用 ruleset，也不得在 `WP-M0-RENAME-GOVERN` 中擅自修改属于 `WP-M2-CONFIG-CLOSE` 的 `internal/config` 安全路径或迁移测试。
 
 ## 已完成
 
@@ -31,12 +31,12 @@ snapshot_at: 2026-08-28
 ## 阻塞
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
-- 本机已配置 `gpg.format=ssh`、Ed25519 `user.signingkey`、`commit.gpgsign=true` 与 `tag.gpgSign=true`，且 `15fb31d` 含 SSH signature；但对应公钥在该 commit push 时未被 GitHub 识别为 signing key，API reason 为 `unknown_key`。维护者已确认完成 signing-key 登记；仍须由登记后创建的新签名提交取得 `verified=true, reason=valid`，不得依赖事后登记追溯修正既有 verification record，也不得 force-push 改写。
-- 远端目前没有 `CI` check-run。必须由签名分支提交打开 PR，待最新 PR merge SHA 上六项 GitHub Actions checks 全部成功后，才能把精确 context 写入严格 ruleset。
+- 登记后创建的 `c562483cc21239246367d65a08687e20ea9c5356` 已由 GitHub 验证为 `verified=true, reason=valid`；既有 `15fb31d` 仍保持首次记录的 `unknown_key`，不得依赖追溯修正或 force-push 改写。
+- PR #1 的首次 CI 在 macOS 上确定失败：`t.TempDir()` 位于 `/var/folders/...`，而现有 Unix credential 路径遍历拒绝作为 symlink 的 `/var` 父组件，导致 migration journal/snapshot 与 credential tests 报 `credential path contains a symbolic link`；合法私有文件使用同类系统路径时也会被产品拒绝。仅改测试路径或 CI `TMPDIR` 会掩盖真实产品缺陷；正确修复需先澄清 docs 安全语义，再调整 `internal/config`，这超出当前 work package 的 repository/ruleset 修改边界。
 - 冻结提交 `38fadd1bef3692f52a8c9a1b67db45819b57112c` 本身未签名，且是 `main..codex/v1-freeze` 的唯一 commit；在合入前直接启用 `required_signatures` 会阻断普通 merge，治理 bootstrap 顺序必须显式处理，不能静默改用 squash 或 rebase 改写拓扑。
 
 ## 下一步
 
-- 只对当前两项新事实更新创建并普通 push 一个登记后的 signed follow-up commit，不得改写或 force-push `15fb31d`；GitHub API 必须返回 `verified=true, reason=valid`。
-- 签名验证通过后创建 `codex/v1-freeze` 到 `main` 的 PR，等待最新 PR merge SHA 上 `Documentation, vet, and secrets`、三个 `Tests (...)`、`Race detector` 和 `Cross-build six supported targets` 全部成功。
-- 精确实证 checks 后，先启用要求 PR、严格六检查、禁止删除/force-push 的 main ruleset；完成获批的合入策略后立即加入 `required_signatures`，并创建限制 `v*` 更新/删除的 tag ruleset。全部复核通过后才完成 `WP-M0-RENAME-GOVERN`，随后进入 `WP-BASELINE-VERIFY`。
+- 维护者决定是否授权在当前 PR 上插入一个独立、docs-first 的 macOS trusted-system-alias config blocker 修复，或调整工作包顺序转入 `WP-M2-CONFIG-CLOSE`；不得仅改 `TMPDIR`/测试路径，也不得用删除 macOS check、降低检查范围或强设 ruleset 绕过失败。
+- 获得授权后以新的 signed commit 修复并普通 push，待 PR #1 最新 head SHA 上 `Documentation, vet, and secrets`、三个 `Tests (...)`、`Race detector` 和 `Cross-build six supported targets` 全部成功。
+- 六项实证全绿后，先启用要求 PR、严格六检查、禁止删除/force-push 的 main ruleset；完成获批的合入策略后立即加入 `required_signatures`，并创建限制 `v*` 更新/删除的 tag ruleset。全部复核通过后才完成 `WP-M0-RENAME-GOVERN`，随后进入 `WP-BASELINE-VERIFY`。
