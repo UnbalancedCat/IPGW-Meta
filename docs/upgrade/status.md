@@ -18,7 +18,7 @@ status: approved
 
 ## 当前实现快照
 
-截至 2026-08-28，以下内容已进入本地工作树，但“实现存在”不代表对应发布门禁已完成：
+截至 2026-08-28，以下内容已进入重写后的 `codex/v1-freeze` 和已验证的 fresh clone，但“实现存在”不代表对应发布门禁已完成：
 
 - 文档/agent 分层、稳定 ID 索引与 `doccheck` 已建立；工作树中的真实测试 fixture 已移除并由合成 fixture 替代，secret scan 配置及其合成 canary 已接入，自更新代码与可达入口已移除。
 - 根 `ipgw` SDK façade、typed errors、接口枚举和 internal CAS/Srun/Dashboard 边界已实现；HTTPS-only、ticket HTTP 下一跳进程内截获、动态 CAS 表单/公钥、JSON/JSONP、最终身份核对、账号冲突、幂等 logout、挑战分类和脱敏 Observer 均已有合成或 `httptest` 覆盖。
@@ -40,16 +40,33 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check` 均通过。核验机 Go 为 1.26.1；v1 构建基线仍以 `go.mod` 的 Go 1.25.0 和 workflow 的 `go-version-file` 为准。
 - 维护者已于 2026-08-28 通过官方门户确认泄露会话失效；未保存截图或认证材料。
 
+## 2026-08-28 历史重写与 rehome 核验
+
+- 冻结提交 `ba7897d142a5a3d5a8a7c6219a6b735823d14bb8` 已映射为 `38fadd1bef3692f52a8c9a1b67db45819b57112c`，冻结 tree 保持 `9b3765dba53fe8e98d4c3f9b7c5d78c6edb26b91`。
+- 隔离 mirror 的全历史扫描由 4 条已知命中降至 0；7 个 commit 的父图、元数据与消息保持一致，`fsck`、不可达对象、reflog、tag 和 tree 门禁通过。
+- GitHub 上 `main`、`codex/v1-freeze` 与 `v0.1.0`–`v0.1.3` 已通过 6 条 per-ref lease 的单次 atomic push 更新并完成 refs/branch API 复核；无 PR 或 `refs/codex/**` 隐藏引用。
+- `D:\project\Go\ipgw-meta-clean` 已从重写后远端 fresh clone；4 个重写前 commit 对象均不存在，全历史 secret scan、`fsck`、test/race/vet/doccheck 全部通过，成为后续唯一权威工作区。
+- GitHub 对象 API 仍可直接访问 3 个已失去 ref 可达性的旧 commit，因此仍需维护者向 GitHub Support 请求清理缓存/悬空对象；该外部步骤完成前 `SEC-HISTORY-001` 和 M0 不得标记 complete。
+
+## 2026-08-28 仓库小写改名与治理停点
+
+- GitHub repository ID `1186323753`（node ID `R_kgDORrXdKQ`）已从 `UnbalancedCat/IPGW-Meta` 小写改名为 `UnbalancedCat/ipgw-meta`；default branch、两个 branch refs、`v0.1.0`–`v0.1.3` 四个 lightweight commit tags 及全部 SHA 均未漂移。当前权威工作区的 `origin` fetch/push URL 已更新为小写 canonical URL。
+- 冻结 tree 原已统一使用 `github.com/UnbalancedCat/ipgw-meta`：Go module/import、源码 URL、文档、workflow、安装器和 release script 中没有旧 GitHub 仓库路径残留，因此本窗口没有对品牌名、旧工作区隔离路径、备份路径或 Windows 安装目录做机械大小写替换。
+- 改名后已 fresh clone 到独立新目录 `D:\project\Go\ipgw-meta-govern-verify-20260828-r2`。该 clone 的 `main` 为 `5ad8c1fa05102fbcb249e7195f4801563b3d44a5`，验证分支为 `codex/v1-freeze` / `38fadd1bef3692f52a8c9a1b67db45819b57112c`，冻结 tree 为 `9b3765dba53fe8e98d4c3f9b7c5d78c6edb26b91`；refs、tag 类型、`fsck`、test/race/vet/doccheck、合成 gitleaks canary、全历史/reflog 与安全 tree scan 均通过，最终状态 clean。
+- 当前权威工作区的 test/race/vet/doccheck、`fsck`、全历史/reflog 和最终 tracked-worktree 安全 tree scan 也通过；固定 gitleaks `8.30.1` 的上游 release assets 已按 GitHub digest 与官方 checksums 核验后仅在临时目录用于本次扫描。
+- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：本机没有 `gpg.format=ssh`、`user.signingkey` 或 `commit.gpgsign` 配置，故没有创建 unsigned post-clean commit，也没有 push 或 PR。远端尚无 CI check-run；required checks 未满足“过去 7 天内成功运行”的可用性前置，因此 main/tag ruleset 均未创建，main 仍未受保护。必须先由签名提交和 PR bootstrap 精确确认六项 CI context，再完成严格规则配置。
+
 ## 2026-08-27 本地验收结果
 
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 均通过。
 - `ipgw`、`ipgw-meta`、`ipgw-legacy` 在 Windows/Linux/macOS 的 amd64/arm64 共 18 个二进制构建通过；`internal/config` 测试在同六目标编译通过，Windows/amd64 race 实际执行通过。
 - `install.ps1` PowerShell AST、`install.sh`/`scripts/release.sh`/`scripts/test-gitleaks.sh` Git Bash 语法以及 `make -n ci` 均通过。它们不是六平台实际安装、升级、回滚证据。
-- gitleaks 正/负合成 canary 与排除 `.git`、`build`、module cache 后的当前源码快照扫描通过。原始 Git 历史仍按 `SEC-HISTORY-001` 保留 4 条已脱敏的已知命中，故 M0 仍未完成。
+- gitleaks 正/负合成 canary 与排除 `.git`、`build`、module cache 后的当前源码快照扫描通过。截至该次 2026-08-27 验收尚未执行历史重写；后续处理与复核结果见上节。
 
 ## 尚未完成与外部条件
 
-- `SEC-HISTORY-001` 未完成：会话已确认失效，但冻结提交、受限历史备份、全 refs 历史重写、v0.1.1–v0.1.3 tag 复核、全历史复扫、逐 ref lease 的远端强制更新、GitHub 缓存/PR 引用处理和协作者重新克隆均未完成。只读 GitHub 认证成功不构成任何远端写入批准。
+- `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
+- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：仓库小写改名、canonical `origin` 和改名后 fresh-clone 复核已完成；签名 post-clean commit、分支 push、PR、CI context 实证、main 严格 ruleset 与 `v*` tag ruleset 尚待完成。
 - 尚未完成 Windows/Linux/macOS 的实际安装、升级、回滚 smoke test；Linux/macOS 的权限与锁行为目前只有交叉编译及 Unix 实现测试源码，仍需相应平台实际执行。
 - 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
