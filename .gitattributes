@@ -1,0 +1,28 @@
+# Normalize repository text in the index and keep cross-platform builds deterministic.
+* text=auto
+
+*.go          text eol=lf
+*.md          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.json        text eol=lf
+*.toml        text eol=lf
+*.sh          text eol=lf
+*.ps1         text eol=lf
+*.py          text eol=lf
+*.txt         text eol=lf
+Makefile      text eol=lf
+LICENSE       text eol=lf
+.gitignore    text eol=lf
+.gitattributes text eol=lf
+go.mod        text eol=lf
+go.sum        text eol=lf
+
+*.png  -text
+*.jpg  -text
+*.jpeg -text
+*.gif  -text
+*.ico  -text
+*.pdf  -text
+*.zip  -text
+*.gz   -text

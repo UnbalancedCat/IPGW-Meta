@@ -1,73 +1,105 @@
-NAME=ipgw
-REPO=UnbalancedCat/IPGW-Meta
-MAIN_ENTRY=cmd/ipgw/main.go
-VERSION=$(shell git describe --tags || echo "unknown")
-BUILD=$(shell date +%FT%T%z)
-BUILD_DIR=build
-RELEASE_DIR=release
-GO_BUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-w -s -X "ipgw-meta/pkg/cmd.Version=${VERSION}" \
-		-X "ipgw-meta/pkg/cmd.Build=${BUILD}" -X "ipgw-meta/pkg/cmd.Repo=${REPO}"'
+SHELL := sh
 
-.PHONY: clean
+# Historical callers passed VERSION on the make command line. Never export or
+# expand it: release versions are read only from RELEASE_VERSION_FILE by shell.
+unexport VERSION
 
-PLATFORM_LIST = \
+BUILD_DIR ?= build
+RELEASE_DIR ?= release
+
+BINARIES := ipgw ipgw-meta ipgw-legacy
+PLATFORMS := \
 	darwin-amd64 \
 	darwin-arm64 \
-	linux-386 \
 	linux-amd64 \
 	linux-arm64 \
-	linux-arm \
-	linux-mips64 \
-	linux-mips64le \
-	freebsd-386 \
-	freebsd-amd64 \
-	windows-386 \
 	windows-amd64 \
-	windows-arm
+	windows-arm64
 
-all: clean $(PLATFORM_LIST)
+.PHONY: all build clean test race vet doccheck ci package release release-gate $(PLATFORMS)
 
-darwin-amd64:
-	GOARCH=amd64 GOOS=darwin $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+define load_build_version
+version_file="$${RELEASE_VERSION_FILE:-}"; \
+if [ -n "$$version_file" ]; then \
+	if [ ! -f "$$version_file" ]; then \
+		echo "RELEASE_VERSION_FILE must name a readable regular file" >&2; \
+		exit 2; \
+	fi; \
+	version_bytes=$$(wc -c < "$$version_file" | tr -d '[:space:]'); \
+	if [ "$$version_bytes" -gt 256 ]; then \
+		echo "release version file exceeds 256 bytes" >&2; \
+		exit 2; \
+	fi; \
+	version=$$(cat -- "$$version_file"); \
+else \
+	version=$$(git describe --tags --always --dirty 2>/dev/null || printf '%s' dev); \
+fi; \
+case "$$version" in ''|*[!0-9A-Za-z._+-]*) \
+	echo "build version contains unsupported characters" >&2; \
+	exit 2;; \
+esac;
+endef
 
-darwin-arm64:
-	GOARCH=arm64 GOOS=darwin $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+all: $(PLATFORMS)
 
-linux-386:
-	GOARCH=386 GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+build:
+	@set -eu; \
+	$(load_build_version) \
+	ldflags="-s -w -X main.version=$$version"; \
+	out="$(BUILD_DIR)/host"; \
+	mkdir -p "$$out"; \
+	for binary in $(BINARIES); do \
+		go build -trimpath -ldflags "$$ldflags" -o "$$out/$$binary" "./cmd/$$binary"; \
+	done
 
-linux-amd64:
-	GOARCH=amd64 GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+$(PLATFORMS):
+	@set -eu; \
+	$(load_build_version) \
+	ldflags="-s -w -X main.version=$$version"; \
+	target="$@"; \
+	goos="$${target%%-*}"; \
+	goarch="$${target##*-}"; \
+	out="$(BUILD_DIR)/$$target"; \
+	suffix=""; \
+	if [ "$$goos" = windows ]; then suffix=.exe; fi; \
+	mkdir -p "$$out"; \
+	for binary in $(BINARIES); do \
+		CGO_ENABLED=0 GOOS="$$goos" GOARCH="$$goarch" go build -trimpath -ldflags "$$ldflags" -o "$$out/$$binary$$suffix" "./cmd/$$binary"; \
+	done
 
-linux-arm64:
-	GOARCH=arm64 GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+test:
+	go test ./...
 
-linux-arm:
-	GOARCH=arm GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+race:
+	go test -race ./...
 
-linux-mips64:
-	GOARCH=mips64 GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+vet:
+	go vet ./...
 
-linux-mips64le:
-	GOARCH=mips64le GOOS=linux $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+doccheck:
+	go run ./cmd/doccheck --check
 
-freebsd-386:
-	GOARCH=386 GOOS=freebsd $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+ci: doccheck test vet race all
 
-freebsd-amd64:
-	GOARCH=amd64 GOOS=freebsd $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME) ${MAIN_ENTRY}
+package: all
+	@set -eu; \
+	$(load_build_version) \
+	if [ -z "$$version_file" ]; then \
+		echo "package requires RELEASE_VERSION_FILE" >&2; \
+		exit 2; \
+	fi; \
+	bash scripts/release.sh "$(BUILD_DIR)" "$(RELEASE_DIR)" "$$version_file"
 
-windows-386:
-	GOARCH=386 GOOS=windows $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME).exe ${MAIN_ENTRY}
+release-gate:
+	@set -eu; \
+	for milestone in M0 M1 M2 M3; do \
+		if ! grep -E "^\\| $$milestone .*\\| complete \\|" docs/upgrade/status.md >/dev/null; then \
+			echo "release blocked: $$milestone is not complete in docs/upgrade/status.md" >&2; \
+			exit 1; \
+		fi; \
+	done
 
-windows-amd64:
-	GOARCH=amd64 GOOS=windows $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME).exe ${MAIN_ENTRY}
-
-windows-arm:
-	GOARCH=arm GOOS=windows $(GO_BUILD) -o $(BUILD_DIR)/$@/$(NAME).exe ${MAIN_ENTRY}
-
-release: all
-	bash scripts/release.sh $(NAME) $(BUILD_DIR) $(RELEASE_DIR)
+release: release-gate package
 
 clean:
-	rm -rf $(BUILD_DIR)/*
+	rm -rf -- build release

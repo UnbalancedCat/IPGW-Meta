@@ -1,15 +1,22 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
-	"ipgw-meta/pkg/cmd"
+	"github.com/UnbalancedCat/ipgw-meta/internal/launcher"
+)
+
+var (
+	version        = "dev"
+	installDefault = "meta"
 )
 
 func main() {
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	os.Exit(launcher.Execute(launcher.Options{
+		Args:           os.Args[1:],
+		InstallDefault: installDefault,
+		Stdin:          os.Stdin,
+		Stdout:         os.Stdout,
+		Stderr:         os.Stderr,
+	}))
 }

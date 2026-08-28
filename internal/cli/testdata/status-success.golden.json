@@ -1,0 +1,1 @@
+{"schema_version":1,"command":"status","ok":true,"data":{"network":"reachable","session":"online","username":"synthetic-user","online_ip":"192.0.2.44","observed_at":"2026-08-27T03:04:05Z","summary":null}}
