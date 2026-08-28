@@ -11,6 +11,8 @@ revision: 2026-08-28-r2
 
 Base64 不是加密。配置只保存 credential provider 引用：桌面默认 OS keyring，另支持环境变量、权限受限文件和 TTY prompt。Unix 文件 provider 强制 `0600`，Windows 限制为当前用户 ACL。
 
+Unix 私密文件路径拒绝用户可控的父目录 symlink 和最终文件 symlink。macOS 固定系统别名例外必须同时满足 [`ADR-0010`](decisions/ADR-0010-macos-trusted-system-path-alias.md) 与 [`MIG-FILE-001`](../operations/config-migration.md#mig-file-001写入与权限)；该锚点之后的全部组件不得放宽，也不能用整路径 symlink 解析或 CI 临时目录覆盖绕过。
+
 ## SEC-HISTORY-001：历史泄露响应
 
 已确认进入历史的测试 session 必须按以下顺序处理：

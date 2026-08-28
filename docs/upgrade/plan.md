@@ -155,7 +155,7 @@ profile migrate
 
 ### 2.5 配置和迁移
 
-配置保存在 OS config dir，profiles、launcher 和未来 protocol cache 使用独立文件。只允许 `keyring`、`env`、`file`、`prompt` 四种 credential provider；command provider 推迟到 v1 后。密码不得写入 YAML。Unix credential file 强制 `0600`；Windows 只允许当前用户、SYSTEM 和 Administrators ACL。损坏配置必须停止，不得回写默认配置。
+配置保存在 OS config dir，profiles、launcher 和未来 protocol cache 使用独立文件。只允许 `keyring`、`env`、`file`、`prompt` 四种 credential provider；command provider 推迟到 v1 后。密码不得写入 YAML。Unix credential file 强制 `0600`；Windows 只允许当前用户、SYSTEM 和 Administrators ACL。损坏配置必须停止，不得回写默认配置。Unix credential 与迁移私密状态默认逐组件拒绝 symlink；macOS 只按 [`ADR-0010`](../architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md) 接受固定 `/var` → `/private/var` 系统 alias 例外，锚点后的用户组件与最终文件规则不放宽。
 
 迁移支持旧 `neucn/ipgw` JSON 和当前 Meta YAML：
 
@@ -181,6 +181,7 @@ docs/
     ADR-0007-immutable-candidate-promotion.md
     ADR-0008-offline-transactional-installer.md
     ADR-0009-separated-live-test-plane.md
+    ADR-0010-macos-trusted-system-path-alias.md
   compatibility/auth-capabilities.md
   operations/{config-migration,release,offline-install,live-validation}.md
   runbooks/{headless-auth,campus-lab}.md
@@ -192,7 +193,7 @@ agent/
 AGENTS.md
 ```
 
-新增稳定 ID 为 `REL-WINDOW-001`、`REL-APPROVAL-001`、`REL-PROMOTION-001`、`REL-ATTEST-001`、`REL-INSTALL-001/002/003`、`REL-LIVEGATE-001/002/003`、`REL-LAB-001/002/003`、`REL-LIVE-MATRIX-001`、`REL-TRANSFER-001`、`EVID-BUNDLE-001`、`EVID-CAPTURE-001`、`EVID-REVIEW-001`、`AUTH-CONFLICT-001`。
+新增稳定 ID 为 `ADR-0010`、`REL-WINDOW-001`、`REL-APPROVAL-001`、`REL-PROMOTION-001`、`REL-ATTEST-001`、`REL-INSTALL-001/002/003`、`REL-LIVEGATE-001/002/003`、`REL-LAB-001/002/003`、`REL-LIVE-MATRIX-001`、`REL-TRANSFER-001`、`EVID-BUNDLE-001`、`EVID-CAPTURE-001`、`EVID-REVIEW-001`、`AUTH-CONFLICT-001`。
 
 所有 docs/agent revision 统一为 `2026-08-28-r2`；`doccheck` 必须同步校验 revision、required paths、稳定锚点、交叉引用和派生 agent 引用。`agent/handoff.md` 只保留当前执行者、当前/已完成 WP ID、阻塞和下一步，不复制里程碑状态或产品规范。
 

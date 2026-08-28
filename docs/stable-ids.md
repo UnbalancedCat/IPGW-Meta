@@ -19,6 +19,7 @@ generated: true
 | `ADR-0007` | 一次构建的不可变候选原样晋升 | [docs/architecture/decisions/ADR-0007-immutable-candidate-promotion.md](architecture/decisions/ADR-0007-immutable-candidate-promotion.md#adr-0007一次构建的不可变候选原样晋升) |
 | `ADR-0008` | 离线安装与事务激活共用验证链 | [docs/architecture/decisions/ADR-0008-offline-transactional-installer.md](architecture/decisions/ADR-0008-offline-transactional-installer.md#adr-0008离线安装与事务激活共用验证链) |
 | `ADR-0009` | 真实认证采用分离的管理面与测试面 | [docs/architecture/decisions/ADR-0009-separated-live-test-plane.md](architecture/decisions/ADR-0009-separated-live-test-plane.md#adr-0009真实认证采用分离的管理面与测试面) |
+| `ADR-0010` | macOS 固定系统别名作为受信任路径锚点 | [docs/architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md](architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md#adr-0010macos-固定系统别名作为受信任路径锚点) |
 | `ARCH-BOUNDARY-001` | 产品边界 | [docs/architecture/overview.md](architecture/overview.md#arch-boundary-001产品边界) |
 | `ARCH-CONCURRENCY-001` | 生命周期 | [docs/architecture/overview.md](architecture/overview.md#arch-concurrency-001生命周期) |
 | `ARCH-MODE-001` | 模式选择 | [docs/architecture/overview.md](architecture/overview.md#arch-mode-001模式选择) |

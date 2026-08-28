@@ -60,6 +60,7 @@ TTY 模式逐 profile 提供以下选择，并在最终 preview 后确认：
 - Unix credential 文件必须是 `0600`；配置和 marker 至少拒绝其他用户写入。
 - Windows credential 文件 ACL 仅允许当前用户及必要系统主体；不能以 Unix mode 检查替代 ACL。
 - Config 读取必须从同一个已验证句柄有界完成：Unix 拒绝 symlink、非普通文件、非当前用户 owner 及 group/other 可写文件；Windows 拒绝 reparse、非磁盘普通文件、未保护或授予非受信主体访问的 DACL。不得先按路径检查后再重新打开。
+- Unix credential 与迁移 journal/snapshot 的受限读取链默认从 `/` 逐组件拒绝 symlink。路径先绝对化并词法清理；Darwin 仅允许清理后的第一个组件 `/var` 在 UID 0 owner、symlink 类型、原始相对目标精确为 `private/var` 且锚定期间身份稳定时进入固定分支。实现不得跟随 `/var`，而须从同一个 `/` 根句柄逐组件 no-follow 打开规范锚点 `/private/var`。锚点之后仍按单个相对组件、directory handle 和 no-follow 语义遍历；最终对象也须 no-follow、非阻塞打开，并在同一读取句柄上通过非 symlink 普通文件及既有 owner/mode 检查。禁止对整条用户路径执行 `EvalSymlinks` 后直接信任。具体决策见 [`ADR-0010`](../architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md)。
 - 所有普通 Config `Save`/`Update` 与迁移事务共享固定、常驻的跨进程 mutation lock。Unix 使用受保护目录中的 `flock` 句柄，Windows 使用独占文件句柄；锁文件不承载 PID、事务状态或秘密，也不在解锁时删除，进程崩溃由内核释放锁。存在 pending migration journal 时，普通 `Save`/`Update` 必须 fail closed。
 - 发布前的写入、权限、文件 flush 或替换失败必须保留原配置和临时恢复信息，不得宣布成功。若原子替换已发布新 Config、但最后的父目录 durability barrier 失败，返回独立的“已发布但持久性未确认”config 错误；此时不得删除已被新 Config 引用的 keyring 项，也不得谎报普通未提交失败。
 - backup 保存经 apply 前一致性复核的完整来源字节，禁止截断。实现固定写入 `BaseDir/migration-backups/`，而不是旧来源文件旁边；名称格式为 `<source-kind>-<transaction-id>-<ordinal>.backup`，不得含 username、IP、时间戳或 provider secret。
@@ -104,5 +105,6 @@ marker 至少包含 migration schema、transaction ID、脱敏来源 stamp、目
 - 不同 Store/进程并发更新无丢失、pending journal 阻断普通写入、preview 后目标代次变化零副作用失败，以及迁移全过程持有同一 mutation lock；
 - 重复运行、来源变化、marker 未知字段/损坏、目标缺失/损坏/摘要不一致和 `marker_verified` 后清理恢复；
 - 旧密码、可逆编码、原始来源摘要不出现在 stdout、stderr、JSON、新 Config、journal、marker、文件名或错误文本的泄漏 canary。
+- macOS 原生 runner 在不覆盖 `TMPDIR` 时，标准 `/var/folders/...` 与对应 `/private/var/...` 下满足既有 owner/mode 合约的 credential 和迁移私密状态均可正常读取；固定系统锚点之后的人为父目录 symlink、最终文件 symlink 和特殊文件，以及错误 owner 与过宽 mode 仍被拒绝。非 allowlist 顶层 alias、alias owner/raw target/身份稳定性不符或规范锚点含 symlink 必须 fail closed，非 Darwin 不启用该例外。仅覆盖 `TMPDIR`、改写测试路径或 skip 不构成验收。
 
 测试 fixture 不得来自真实用户配置。验收至少运行 `go test -race ./internal/config ./internal/cli`，并在 Windows 与 Unix 分别验证 ACL/mode、`BaseDir/migration-backups/` 路径与命名、备份内容完整性和原子替换行为。
