@@ -11,10 +11,10 @@ snapshot_at: 2026-08-28
 
 ## 当前执行
 
-- 执行者：无（安全停点）。
+- 执行者：Codex（signing-key 登记后的验证与 PR bootstrap）。
 - 工作包：`WP-M0-RENAME-GOVERN`（`in_progress`）。
-- 修改边界：本窗口已完成 GitHub 小写改名、canonical `origin` 与独立 fresh-clone 复核；tracked module/import/URL 原已小写，无需修改。待签名提交、push、PR 和 ruleset 均未执行。
-- 停止条件：已命中“没有可用 SSH commit signing 配置”和“required check 尚无成功 check-run、无法确认可用性”；不得创建 unsigned commit 或凭 YAML 名称强设 ruleset。
+- 修改边界：本窗口已完成 GitHub 小写改名、canonical `origin`、独立 fresh-clone 复核、SSH-signed post-clean commit `15fb31db059b660e03cf5460483cbf2f0aa0cbda` 及普通 fast-forward branch push；维护者现已确认把对应公钥添加为 GitHub Signing key，本次只允许对现有两项事实更新创建新的 signed follow-up commit，再以普通 fast-forward push 验证 GitHub 状态。PR 和 ruleset 尚未执行。
+- 停止条件：新提交的 GitHub verification 必须为 `verified=true, reason=valid`；任意 ref/SHA 漂移、未知 PR/ruleset、签名失败或权限不足均立即停止。不得 force-push、改写既有 commit，或凭 YAML 名称强设 ruleset。
 
 ## 已完成
 
@@ -31,12 +31,12 @@ snapshot_at: 2026-08-28
 ## 阻塞
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
-- 本机没有 `gpg.format=ssh`、`user.signingkey` 或 `commit.gpgsign` 配置；post-clean 提交必须由维护者的可用 SSH signing key 签名，不能由 Agent 创建 unsigned commit。
+- 本机已配置 `gpg.format=ssh`、Ed25519 `user.signingkey`、`commit.gpgsign=true` 与 `tag.gpgSign=true`，且 `15fb31d` 含 SSH signature；但对应公钥在该 commit push 时未被 GitHub 识别为 signing key，API reason 为 `unknown_key`。维护者已确认完成 signing-key 登记；仍须由登记后创建的新签名提交取得 `verified=true, reason=valid`，不得依赖事后登记追溯修正既有 verification record，也不得 force-push 改写。
 - 远端目前没有 `CI` check-run。必须由签名分支提交打开 PR，待最新 PR merge SHA 上六项 GitHub Actions checks 全部成功后，才能把精确 context 写入严格 ruleset。
 - 冻结提交 `38fadd1bef3692f52a8c9a1b67db45819b57112c` 本身未签名，且是 `main..codex/v1-freeze` 的唯一 commit；在合入前直接启用 `required_signatures` 会阻断普通 merge，治理 bootstrap 顺序必须显式处理，不能静默改用 squash 或 rebase 改写拓扑。
 
 ## 下一步
 
-- 维护者先在当前权威工作区配置并验证 SSH commit signing，然后只对当前两项事实更新创建 signed post-clean commit；不得改写既有冻结提交。
-- 推送 `codex/v1-freeze` 并创建到 `main` 的 PR，等待最新 PR merge SHA 上 `Documentation, vet, and secrets`、三个 `Tests (...)`、`Race detector` 和 `Cross-build six supported targets` 全部成功。
+- 只对当前两项新事实更新创建并普通 push 一个登记后的 signed follow-up commit，不得改写或 force-push `15fb31d`；GitHub API 必须返回 `verified=true, reason=valid`。
+- 签名验证通过后创建 `codex/v1-freeze` 到 `main` 的 PR，等待最新 PR merge SHA 上 `Documentation, vet, and secrets`、三个 `Tests (...)`、`Race detector` 和 `Cross-build six supported targets` 全部成功。
 - 精确实证 checks 后，先启用要求 PR、严格六检查、禁止删除/force-push 的 main ruleset；完成获批的合入策略后立即加入 `required_signatures`，并创建限制 `v*` 更新/删除的 tag ruleset。全部复核通过后才完成 `WP-M0-RENAME-GOVERN`，随后进入 `WP-BASELINE-VERIFY`。
