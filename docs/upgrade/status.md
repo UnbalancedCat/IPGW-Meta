@@ -23,7 +23,7 @@ status: approved
 - 文档/agent 分层、稳定 ID 索引与 `doccheck` 已建立；工作树中的真实测试 fixture 已移除并由合成 fixture 替代，secret scan 配置及其合成 canary 已接入，自更新代码与可达入口已移除。
 - 根 `ipgw` SDK façade、typed errors、接口枚举和 internal CAS/Srun/Dashboard 边界已实现；HTTPS-only、ticket HTTP 下一跳进程内截获、动态 CAS 表单/公钥、JSON/JSONP、最终身份核对、账号冲突、幂等 logout、挑战分类和脱敏 Observer 均已有合成或 `httptest` 覆盖。
 - `ipgw`、`ipgw-meta`、`ipgw-legacy` 三入口、模式优先级、稳定 JSON envelope/退出码、named profiles、keyring/env/file/prompt provider、事务化双来源配置迁移及原子 bundle/安装脚本已实现。Config 读取、跨进程 mutation lock、pending-journal 写阻断、preview 目标代次核对和 keyring 提交失败清理均已加固并有确定性 race 覆盖。
-- CI/release workflow、六目标交叉构建定义和 release gate 已写入仓库；它们尚未在冻结的远端候选提交上形成完整成功记录，因此不能把 workflow 文件本身当作 M3 证据。
+- CI/release workflow、六目标交叉构建定义和 release gate 已写入仓库；实现候选 head `907b3e754b67cf759421eb4326c44367b14fe78a` 已形成一轮完整成功 CI 记录，但尚未合入 `main`，也未形成 candidate-set、安装或真实校园网证据，因此不能外推为 M3 完成。
 
 M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直到安装/升级/回滚 smoke test 与 Unix 实机权限行为完成相应验证；不得把交叉编译或语法检查外推为实机安装证据。
 
@@ -53,8 +53,10 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 - GitHub repository ID `1186323753`（node ID `R_kgDORrXdKQ`）已从 `UnbalancedCat/IPGW-Meta` 小写改名为 `UnbalancedCat/ipgw-meta`；default branch、两个 branch refs、`v0.1.0`–`v0.1.3` 四个 lightweight commit tags 及全部 SHA 均未漂移。当前权威工作区的 `origin` fetch/push URL 已更新为小写 canonical URL。
 - 冻结 tree 原已统一使用 `github.com/UnbalancedCat/ipgw-meta`：Go module/import、源码 URL、文档、workflow、安装器和 release script 中没有旧 GitHub 仓库路径残留，因此本窗口没有对品牌名、旧工作区隔离路径、备份路径或 Windows 安装目录做机械大小写替换。
 - 改名后已 fresh clone 到独立新目录 `D:\project\Go\ipgw-meta-govern-verify-20260828-r2`。该 clone 的 `main` 为 `5ad8c1fa05102fbcb249e7195f4801563b3d44a5`，验证分支为 `codex/v1-freeze` / `38fadd1bef3692f52a8c9a1b67db45819b57112c`，冻结 tree 为 `9b3765dba53fe8e98d4c3f9b7c5d78c6edb26b91`；refs、tag 类型、`fsck`、test/race/vet/doccheck、合成 gitleaks canary、全历史/reflog 与安全 tree scan 均通过，最终状态 clean。
-- 当前权威工作区的 test/race/vet/doccheck、`fsck`、全历史/reflog 和最终 tracked-worktree 安全 tree scan 也通过；固定 gitleaks `8.30.1` 的上游 release assets 已按 GitHub digest 与官方 checksums 核验后仅在临时目录用于本次扫描。
-- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：维护者登记 Signing key 后创建的 follow-up commit `c562483cc21239246367d65a08687e20ea9c5356` 含 SSH signature，经普通 fast-forward push 后由 GitHub API 验证为 `verified=true, reason=valid`；PR #1 已从 `codex/v1-freeze` 打开到 `main`。首次 CI run `33166812911` 实证了六项精确 context 均来自 GitHub Actions App `15368`，其中五项成功，`Tests (macos-latest)` 因系统临时路径 `/var/folders/...` 的 `/var` symlink 被 Unix credential 路径遍历拒绝而失败。required checks 尚未全绿，故 main/tag ruleset 均未创建，main 仍未受保护；不得通过降低检查或提前启用 ruleset 绕过该失败。
+- 当前权威工作区在 head `907b3e754b67cf759421eb4326c44367b14fe78a` 上的 test/race/vet/doccheck、`fsck`、合成 gitleaks canary、12 commits 全历史/reflog 与最终工作树扫描均通过；固定 gitleaks `8.30.1` 的上游 release assets 已按 GitHub digest 与官方 checksums 核验后仅在临时目录用于扫描，并已清理。
+- 首次 CI run `33166812911` 的 macOS 失败已按 docs-first 顺序修复：[`ADR-0010`](../architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md) 由 signed commit `f1ca77c1096a84d5048af72395fd4449a34a9ffc` 建立；signed commit `907b3e754b67cf759421eb4326c44367b14fe78a` 使用逐组件 `openat(O_NOFOLLOW)`、只允许 Darwin 固定 `/var` → `/private/var` 受验证锚点，并增加原生 `/var/folders/...`、symlink 与 FIFO 回归测试。维护者登记 Signing key 后，post-clean signed commits `15fb31db059b660e03cf5460483cbf2f0aa0cbda`、`c562483cc21239246367d65a08687e20ea9c5356`、`5bee31b3ea07bb023c3b38b9465f7d12ed0caabb`、`f1ca77c1096a84d5048af72395fd4449a34a9ffc` 与 `907b3e754b67cf759421eb4326c44367b14fe78a` 当前均由 GitHub 验证为 `verified=true, reason=valid`。
+- 实现 head `907b3e754b67cf759421eb4326c44367b14fe78a` 的 CI run `33173324862` 六项精确 context 全部成功，且逐项复核均来自 GitHub Actions App `15368`。active main ruleset `main-v1-protection`（ID `21733128`）无 bypass，要求 PR、严格六检查并禁止删除和 force-push；active tag ruleset `v-tag-protection`（ID `21733211`）无 bypass，禁止 `refs/tags/v*` 更新和删除。分支与四个既有 tag SHA 在治理写入后均未漂移。
+- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：冻结提交 `38fadd1bef3692f52a8c9a1b67db45819b57112c` 未签名，现有授权又禁止 force-push、历史改写与 PR merge；因此 main 的 `required_signatures` 必须等待维护者明确批准 bootstrap 合入策略并完成合入后立即启用。不得静默改用 squash/rebase，也不得把当前无签名规则的治理中间态标记 complete。
 
 ## 2026-08-27 本地验收结果
 
@@ -66,8 +68,8 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：仓库小写改名、canonical `origin`、改名后 fresh-clone 复核、API-valid SSH-signed follow-up commit、普通分支 push、PR #1 与六项 CI context 实证已完成；macOS test gate、main 严格 ruleset 与 `v*` tag ruleset 尚待完成。macOS 失败涉及 `WP-M2-CONFIG-CLOSE` 的 `internal/config`/迁移测试边界，需维护者明确授权当前工作包的最小修复或调整工作包顺序。
-- 尚未完成 Windows/Linux/macOS 的实际安装、升级、回滚 smoke test；Linux/macOS 的权限与锁行为目前只有交叉编译及 Unix 实现测试源码，仍需相应平台实际执行。
+- `WP-M0-RENAME-GOVERN` 仍为 `in_progress`：仓库小写改名、canonical `origin`、改名后 fresh-clone 复核、API-valid SSH-signed follow-up commits、普通分支 push、实现 head 六项 CI 全绿、main 严格 CI/PR/防删除/防 force-push ruleset 与 `v*` tag 更新/删除 ruleset 均已完成；尚待维护者批准 bootstrap 合入策略、执行 PR merge，并在合入后立即把 `required_signatures` 加入 main ruleset。
+- 尚未完成 Windows/Linux/macOS 的实际安装、升级、回滚 smoke test；macOS trusted `/var` 锚点已在原生 CI 实跑，Linux 的相同 no-follow opener 已通过 WSL 实跑，但各平台安装、完整权限与锁行为仍需对应实机验收。
 - 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 - 离线安装器尚未满足 [ADR-0008](../architecture/decisions/ADR-0008-offline-transactional-installer.md) 的 acquisition、路径/权限和完整 failpoint 门禁。
