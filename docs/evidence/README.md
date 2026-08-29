@@ -37,7 +37,46 @@ SHA256SUMS
 - 解析必须拒绝任意层级的未知字段、缺失字段或重复 object key，拒绝无效 UTF-8，并拒绝完整顶层对象之后的另一个 JSON 值或任意非空白尾随字节；JSON grammar 允许尾随空白，canonical runner 编码必须恰好以一个 LF 结尾。
 - schema validator 只返回固定且不回显输入的错误；不得把原始值、JSON 片段、profile、路径或产品输出拼入错误。
 
-`summary.md` 固定模板和 bundle 持久化的实现不由本 schema 工作包定义，继续分别受 `REL-LIVEGATE-003`、`EVID-CAPTURE-001` 与 `WP-M3-LIVEGATE-RUNNER` 约束。
+`summary.md` 必须只从已验证的 `evidence.json` 按以下精确模板生成：
+
+```text
+# IPGW-Meta live-gate summary
+
+- schema_version: <schema_version>
+- plan_id: <plan_id>
+- revision: <revision>
+- evidence_id: <evidence_id>
+- candidate_id: <candidate_id>
+- candidate_set_sha256: <candidate_set_sha256>
+- source_commit: <source_commit>
+- platform: <platform>
+- testbed: <testbed>
+- network_type: <network_type>
+- auth_method: <auth_method>
+- suite: <suite>
+- capability_before: <capability_before-comma-joined>
+- result: <result>
+- capability_after: <capability_after-comma-joined>
+- started_at: <started_at>
+- finished_at: <finished_at>
+
+## Steps
+
+- <name> | <result> | <exit_code> | <error_code-or-null> | <duration_seconds>
+```
+
+`<...>` 表示对应 schema 值而不是自由文本：整数使用十进制，字符串使用已验证的原值且不加 JSON 引号，capability 数组按原顺序以逗号连接且逗号后无空格；每个 step 按 `steps` 顺序生成一行，空 error code 写字面量 `null`。
+
+模板所有换行都必须是 LF，不得有 CRLF 或行尾空格；文件末尾恰好一个 LF，不得增加其他标题、注释或空行。
+
+`SHA256SUMS` 必须恰好为以下两行固定顺序：
+
+```text
+<evidence-json-sha256-lowerhex>  evidence.json
+<summary-md-sha256-lowerhex>  summary.md
+```
+
+每行在 hash 与文件名之间恰好两个 ASCII 空格并以 LF 结束，文件末尾恰好一个 LF；两个 hash 分别覆盖 `evidence.json` 与 `summary.md` 的精确字节，`SHA256SUMS` 不得自哈希。
 
 ## EVID-AUTH-001：认证证据字段
 
@@ -149,9 +188,15 @@ capability 的封闭枚举为 `supported`、`detected_only`、`observed_anonymou
 
 - runner 在源端直接构造字段 allowlist，禁止先写原始 stdout/stderr、网络数据或页面再脱敏。
 - QR payload 必须直达维护者私有 TTY；password 必须由产品 TTY prompt 读取。runner、shell history、SSH 转录和 evidence 都不得接触它们。
-- `evidence.json` 与 `summary.md` 使用临时文件、文件 flush、原子替换和父目录 durability barrier；最后才生成覆盖前两个文件的 `SHA256SUMS`，并再次验证。
-- 任何文件无法确认持久化、包含未知字段、candidate 运行前后 hash 改变或权限不满足时，runner 退出 13，不得宣布通过。
-- `summary.md` 由固定模板从 `evidence.json` 生成，不接受自由文本。
+- evidence ID allocator 使用 `started_at` 的 UTC 日期，在 `build/live-evidence/<candidate-id>/` 下选择最低可用序号 `001` 至 `999`；最终目录名遵守 schema 的 `evidence_id` 规则且必须 no-clobber，竞争时重新选择最低可用序号，序号耗尽则退出 13 且无 bundle。
+- runner 只在最终目录同一父目录内创建隐藏 staging directory；staging 名称不得匹配 evidence ID，审阅器与 allocator 不得把它识别为 bundle。成功 publish 后最终目录恰好包含 `evidence.json`、`summary.md`、`SHA256SUMS`；任意失败都不发布最终目录，并 best-effort 清理 staging。
+- Unix 必须对三个文件分别 flush/`fsync`，对完整 staging directory `fsync`，no-clobber rename publish 后再对父目录 `fsync`。
+- Windows 必须对三个文件分别 flush/`FlushFileBuffers`，并使用 write-through 的原子 replace 与 no-clobber directory publish；文件 flush 和 write-through publish 共同构成 durability barrier。
+- 只有 `evidence.json` 与 `summary.md` 已持久化后才生成固定两行 `SHA256SUMS`；checksum 文件持久化后必须重新读取并验证三文件的名称、精确字节、权限与 hash，才允许 publish。
+- candidate-manifest、candidate 路径/类型/权限、manifest projection 或任一 preflight hash 拒绝时，runner 退出 12 且不得创建有效 bundle。
+- candidate/manifest 运行后 drift、bundle 权限不满足、任一 flush/fsync/FlushFileBuffers/write-through/publish/复核失败时，runner 退出 13 且不得保留有效 bundle。
+- 在原子目录发布提交点前，runner cancel 的优先退出码为 130；即使同时观察到 gate 或持久化失败也不得改写为其他退出码，并且不得发布或保留有效 bundle。
+- 最终目录原子发布成功是 evidence 提交点；此后到达的取消不再被 runner 观察，已提交的有效 bundle 及其 0、10 或 11 结果不得被追溯丢弃或改写为 130。
 
 ## EVID-REVIEW-001：人工复核与入库
 

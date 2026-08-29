@@ -2,7 +2,7 @@
 plan_id: IPGW-META-V1
 revision: 2026-08-28-r2
 derived: true
-snapshot_at: 2026-08-29
+snapshot_at: 2026-08-30
 ---
 
 # 当前执行交接
@@ -12,9 +12,9 @@ snapshot_at: 2026-08-29
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`WP-M3-LIVEGATE-SCHEMA`（`complete`；PR #8 已普通 merge）。
-- 修改边界：本轮只在本文件与 [`docs/upgrade/status.md`](../docs/upgrade/status.md) 中收口 `WP-M3-LIVEGATE-SCHEMA` 的提交、merge、签名与门禁事实；不得修改产品代码、测试、workflow、runner、安装器、SDK/CLI 或 main/tag ruleset，不得创建 candidate、release、tag 或发布资产。
-- 停止条件：任一远端 ref/SHA、ruleset、签名、required check 或工作树漂移；需要修改上述两份文档之外的文件；需要执行更广工作包、启动网络/认证/QR/校园网会话、创建 candidate/release/tag/发布资产、force-push，或接触隔离工作区、敏感备份、rewrite mirror 时立即停止。
+- 工作包：`WP-M3-LIVEGATE-RUNNER`（`in_progress`；base main `7585eb6c08d4e4471ae4783bd8c27fa10a9ebf23`）。
+- 修改边界：只在 `docs/operations/live-validation.md`、`docs/evidence/README.md`、`docs/operations/release.md` 补齐 runner-facing 最小契约，并在 `internal/livegate/**`、`internal/cmd/ipgw-live-gate/**` 与对应合成测试中实现 maintainer-only runner、冻结 candidate/manifest/hash 绑定、固定 suite 状态机与清理权、私有三文件 evidence bundle、durability 与泄漏门禁；完成时只允许本文件及 `docs/upgrade/status.md` 的最小事实更新。禁止修改公共 SDK/CLI/JSON/退出码、workflow、candidate/promotion、安装器或 ruleset，禁止创建 candidate/release/tag/发布资产或启动真实网络/认证/QR/校园网会话。
+- 停止条件：任一 ref/SHA、ruleset、签名、required check 或工作树漂移；docs 无法唯一确定安全行为而需要扩展契约；需要修改边界外文件；需要启动真实网络/认证/QR/校园网会话、接触凭据或原始输出；需要创建 candidate/release/tag/发布资产、force-push，或接触旧工作区、敏感备份、rewrite mirror 时立即停止。
 
 ## 已完成
 
@@ -40,9 +40,9 @@ snapshot_at: 2026-08-29
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
 - 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
-- 既有 `.github/workflows/release.yml` push run `33259518906` 仍以零 job 即时失败；它不是当前 main required check，也非本工作包引入，但进入 `WP-M3-CANDIDATE` / promotion 前必须按发布规范诊断。
+- 既有 `.github/workflows/release.yml` push 仍以零 job 即时失败；它不是当前 main required check，也非本工作包引入，但进入 `WP-M3-CANDIDATE` / promotion 前必须按发布规范诊断。
 
 ## 下一步
 
-- 下一工作包为 `WP-M3-LIVEGATE-RUNNER`；既有 `.github/workflows/release.yml` run `33259518906` 的零 job 即时失败仍须在进入 `WP-M3-CANDIDATE` / promotion 前按发布规范诊断。
+- 恢复并完成 `WP-M3-LIVEGATE-RUNNER` 的 manifest 绑定、合成状态机、清理权、private bundle durability 与无泄漏门禁；runner 完成后仍须先诊断既有 `.github/workflows/release.yml` 零 job 失败，才能进入 candidate/promotion。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
