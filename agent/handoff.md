@@ -12,9 +12,9 @@ snapshot_at: 2026-08-29
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`WP-M2-INSTALL-NATIVE`（`complete`；PR #6 已普通 merge）。
-- 修改边界：本轮只在本文件与正式状态中收口 PR #6 的 merge、签名和 merge 后门禁事实；不得修改产品代码、测试、workflow/script、安装器或 main/tag ruleset，不得创建 release/tag/发布资产，也不得接触真实安装目标、校园网会话、隔离工作区、敏感备份或 rewrite mirror。
-- 停止条件：任一远端 ref/SHA、ruleset、签名、required check 或工作树漂移；需要修改上述两份文档之外的文件；需要创建 release/tag/发布资产、force-push 或接触真实校园网会话时立即停止。
+- 工作包：`WP-M3-LIVEGATE-SCHEMA`（`in_progress`）。
+- 修改边界：只实现 [`REL-LIVEGATE-001`](../docs/operations/live-validation.md#rel-livegate-001runner-接口与信任边界) 与 [`EVID-AUTH-001`](../docs/evidence/README.md#evid-auth-001认证证据字段) 固定的 live-gate schema、封闭枚举、验证和泄漏测试，范围限于 `docs/operations/live-validation.md`、`docs/evidence/README.md`、`internal/livegate/**`、对应测试、本文件及正式状态的最小事实更新；不得实现 maintainer-only runner、执行候选、修改产品 SDK/CLI、workflow、安装器或 ruleset。
+- 停止条件：任一远端 ref/SHA、ruleset、签名或工作树漂移；规范无法唯一确定 schema/枚举而需要扩大产品契约；需要启动网络/认证/QR/校园网会话、接触凭据或证据原始输出；需要创建 candidate、release、tag、发布资产、force-push，或接触隔离工作区、敏感备份、rewrite mirror 时立即停止。
 
 ## 已完成
 
@@ -43,5 +43,5 @@ snapshot_at: 2026-08-29
 
 ## 下一步
 
-- 以 PR #6 的普通 merge 检查点 `989cfad32aaed7352c50fb9e80233ac137362616` 为 M2 实现基线，下一工作包进入 `WP-M3-LIVEGATE-SCHEMA`；既有 `.github/workflows/release.yml` 无 job 即时失败仍须在进入 WP-M3-CANDIDATE / promotion 前按发布规范诊断。
+- 完成 `WP-M3-LIVEGATE-SCHEMA` 的 schema、封闭枚举、退出码与泄漏测试后，再进入 `WP-M3-LIVEGATE-RUNNER`；既有 `.github/workflows/release.yml` 无 job 即时失败仍须在进入 WP-M3-CANDIDATE / promotion 前按发布规范诊断。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
