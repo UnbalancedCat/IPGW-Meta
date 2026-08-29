@@ -13,7 +13,7 @@ status: approved
 | M0 文档与紧急安全 | in_progress | 历史秘密清理、secret scan、日志脱敏、自更新禁用 | [计划](plan.md#34-m0-历史清理)、[安全](../architecture/security.md) |
 | M1 协议正确性与 SDK | complete | HTTPS-only、ticket 截获、动态发现、typed errors、最终身份校验 | [协议](../architecture/protocol-correctness.md)、[SDK](../reference/go-sdk.md) |
 | M2 三入口、配置与自动化 | complete | 三二进制、JSON/退出码、profiles、迁移和原子安装 | [CLI](../reference/cli.md)、[迁移](../operations/config-migration.md) |
-| M3 v1 候选与稳定发布 | not_started | 自动化门禁、跨平台构建、校园网人工验收 | [发布](../operations/release.md)、[证据](../evidence/README.md) |
+| M3 v1 候选与稳定发布 | in_progress | 自动化门禁、跨平台构建、校园网人工验收 | [发布](../operations/release.md)、[证据](../evidence/README.md) |
 | 1.x 后续功能迁移 | not_started | 会话 → 套餐/当前用量 → 历史用量/账单/充值 | [迁移矩阵](migration-matrix.md) |
 
 ## 当前实现快照
@@ -109,7 +109,7 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - 仓库治理、只读 baseline 与所有 M2 工作包均已完成；下一工作包为 `WP-M3-LIVEGATE-SCHEMA`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
 - 六平台原生 release-shaped asset 安装矩阵已使用同一精确临时 PR artifact 完成；该 artifact 只构成 M2 原生门禁证据，不是 M3 candidate-set、公开 release、tag 或发布资产。
 - 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是 main ruleset 的六项 required checks，也非本工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
-- 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow；临时 PR artifact 不得视为该 candidate-set。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
+- `WP-M3-LIVEGATE-SCHEMA` 已开始，因此 M3 为 `in_progress`；尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 live-gate runner、attestation 或 promotion workflow，临时 PR artifact 不得视为 candidate-set。M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 
 ## 当前已知能力限制

@@ -32,6 +32,13 @@ SHA256SUMS
 
 目录和文件权限分别为 Unix `0700/0600` 或 Windows 当前用户私有 ACL。bundle 是本地私有审核材料，不得整包提交到仓库；仓库只接收 [`EVID-REVIEW-001`](#evid-review-001人工复核与入库) 允许的固定摘要和 bundle hash。
 
+- 编码后的 `evidence.json` 必须是有效 UTF-8，大小不得超过 64 KiB（65536 字节）。
+- 顶层对象必须恰好包含下方样例的 18 个字段，每个 step 对象必须恰好包含样例的 5 个字段；所有字段都必需且只能出现一次。
+- 解析必须拒绝任意层级的未知字段、缺失字段或重复 object key，拒绝无效 UTF-8，并拒绝完整顶层对象之后的另一个 JSON 值或任意非空白尾随字节；JSON grammar 允许尾随空白，canonical runner 编码必须恰好以一个 LF 结尾。
+- schema validator 只返回固定且不回显输入的错误；不得把原始值、JSON 片段、profile、路径或产品输出拼入错误。
+
+`summary.md` 固定模板和 bundle 持久化的实现不由本 schema 工作包定义，继续分别受 `REL-LIVEGATE-003`、`EVID-CAPTURE-001` 与 `WP-M3-LIVEGATE-RUNNER` 约束。
+
 ## EVID-AUTH-001：认证证据字段
 
 `evidence.json` 使用 schema version 1，只允许以下结构：
@@ -43,21 +50,63 @@ SHA256SUMS
   "revision": "2026-08-28-r2",
   "evidence_id": "EVID-YYYYMMDD-NNN",
   "candidate_id": "v1.0.0-0123456789ab-12345.1",
-  "candidate_set_sha256": "HEX64",
-  "source_commit": "FULL40HEX",
+  "candidate_set_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_commit": "0123456789abcdef0123456789abcdef01234567",
   "platform": "linux-amd64",
   "testbed": "nas_vm",
   "network_type": "campus_wired",
   "auth_method": "password",
   "suite": "password_core",
-  "capability_before": ["live_unverified"],
+  "capability_before": ["synthetic_covered", "live_unverified"],
   "result": "pass",
-  "capability_after": ["live_verified"],
-  "started_at": "UTC-RFC3339",
-  "finished_at": "UTC-RFC3339",
+  "capability_after": ["synthetic_covered", "live_verified"],
+  "started_at": "2026-08-29T01:02:03Z",
+  "finished_at": "2026-08-29T01:02:10Z",
   "steps": [
     {
       "name": "initial_status_offline",
+      "result": "pass",
+      "exit_code": 0,
+      "error_code": null,
+      "duration_seconds": 1
+    },
+    {
+      "name": "login_logged_in",
+      "result": "pass",
+      "exit_code": 0,
+      "error_code": null,
+      "duration_seconds": 1
+    },
+    {
+      "name": "status_online",
+      "result": "pass",
+      "exit_code": 0,
+      "error_code": null,
+      "duration_seconds": 1
+    },
+    {
+      "name": "second_login_already_online",
+      "result": "pass",
+      "exit_code": 0,
+      "error_code": null,
+      "duration_seconds": 1
+    },
+    {
+      "name": "logout_logged_out",
+      "result": "pass",
+      "exit_code": 0,
+      "error_code": null,
+      "duration_seconds": 1
+    },
+    {
+      "name": "final_status_offline",
+      "result": "pass",
+      "exit_code": 0,
+      "error_code": null,
+      "duration_seconds": 1
+    },
+    {
+      "name": "second_logout_already_offline",
       "result": "pass",
       "exit_code": 0,
       "error_code": null,
@@ -67,7 +116,26 @@ SHA256SUMS
 }
 ```
 
-platform、testbed、network type、auth method、suite、result、step name 和 error code 必须来自 runner 的封闭枚举。时间为 UTC RFC3339，时长为非负整数秒。fail/blocked 时 `capability_after` 不得提升。禁止自由 `notes`、reviewer handle、命令文本、profile、username、IP、interface、URL、`details` 或原始输出。
+`schema_version`、`plan_id`、`revision` 必须分别精确为 `1`、`IPGW-META-V1`、`2026-08-28-r2`。
+
+`evidence_id` 必须为 `EVID-YYYYMMDD-NNN`：日期必须是有效公历日期且等于 `started_at` 的 UTC 日期，序号为 `001` 至 `999`。`candidate_id` 必须为 `v1.0.0-<source-sha12>-<run-id>.<attempt>`：SHA 前缀是 `source_commit` 的前 12 位，run ID 与 attempt 均为无前导零的正十进制整数。`candidate_set_sha256` 必须是 64 位小写十六进制，`source_commit` 必须是 40 位小写十六进制。
+
+`started_at` 与 `finished_at` 必须是使用 `Z` 的 canonical UTC RFC3339Nano，且 `finished_at` 不早于 `started_at`。
+
+`platform`、`testbed`、`network_type`、`auth_method`、`suite`、总体 `result` 与 step `result` 必须使用 [`REL-LIVEGATE-001`](../operations/live-validation.md#rel-livegate-001runner-接口与信任边界) 的封闭枚举和精确环境组合。
+
+capability 的封闭枚举为 `supported`、`detected_only`、`observed_anonymous`、`synthetic_covered`、`live_unverified`、`live_verified`、`unknown`。schema version 1 的数组值和顺序固定为：
+
+- `password_core`：`capability_before` 为 `["synthetic_covered", "live_unverified"]`；通过后为 `["synthetic_covered", "live_verified"]`。
+- `terminal_qr`：`capability_before` 为 `["observed_anonymous", "synthetic_covered", "live_unverified"]`；通过后为 `["observed_anonymous", "synthetic_covered", "live_verified"]`。
+
+总体 `fail` 或 `blocked` 时，`capability_after` 必须与 `capability_before` 完全相同；总体 `pass` 时必须精确使用对应 suite 的通过后数组。
+
+`steps` 的 ID、顺序、prefix、cleanup、result 归并以及 `exit_code/error_code` 对应关系必须满足 [`REL-LIVEGATE-002`](../operations/live-validation.md#rel-livegate-002suite-状态机与清理权)。
+
+`duration_seconds` 必须是非负整数；不要求各 step 时长之和等于 `finished_at - started_at`。
+
+禁止自由 `notes`、reviewer handle、命令文本、profile、username、IP、interface、URL、`details` 或原始输出。
 
 ## EVID-GATE-001：证据门禁
 
