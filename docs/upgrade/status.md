@@ -93,6 +93,7 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - 首轮 Windows job 超时的根因是测试子进程环境 allowlist 遗漏 `PSModuleAnalysisCachePath`，导致 Windows PowerShell 每次启动重建 module analysis cache。signed fix `d54a30d085d9663c03970cd66b76f5df13216b0b` 仅恢复该缓存路径，未提高任何 timeout。
 - implementation-head CI run `33249498526` 的六项 required checks 全部成功；native workflow run `33249498529` 的 package 与六个原生 runner 共七个 job 全部成功。
 - 本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check` 全部通过；固定 gitleaks `8.30.1` 的合成 canary、implementation-head 全历史/全部 refs/reflog 与精确工作树扫描均为 0 命中。`git fsck --full` 通过，仅报告四个 dangling tree，且无损坏或 dangling commit。
+- PR #6 已以普通 merge 合入 merge commit `989cfad32aaed7352c50fb9e80233ac137362616`；双亲依次为原 main `6d9cde533d4d3bc511cc8122a96bfcfa114988a8` 与 PR head `130a698399d83b2f7cda2ab7581ac6ef4c60b8a1`，tree 为 `8c280f9c92dc739e74425a4be52e6abdae364775`，GitHub 签名为 `verified=true, reason=valid`。merge 后 CI run `33254131004` 六项检查全部成功，native run `33254130929` 的 package 与六个平台共七个 jobs 全部成功。
 - `WP-M2-INSTALL-NATIVE` 与 M2 已完成，下一工作包为 `WP-M3-LIVEGATE-SCHEMA`。本节 artifact 是仅用于本 PR 原生门禁的临时 release-shaped 验证产物，不是 M3 candidate-set、公开 release、tag 或发布资产。
 
 ## 2026-08-27 本地验收结果
