@@ -46,11 +46,16 @@ func newUnixFixture(t *testing.T) *unixFixture {
 		t.Fatalf("make test root private: %v", err)
 	}
 	repoRoot := findRepoRoot(t)
+	home := filepath.Join(root, "home")
+	config := filepath.Join(root, "config")
+	if runtime.GOOS == "darwin" {
+		config = filepath.Join(home, "Library", "Application Support")
+	}
 	f := &unixFixture{
 		root:      root,
 		script:    filepath.Join(repoRoot, "install.sh"),
-		home:      filepath.Join(root, "home"),
-		config:    filepath.Join(root, "config"),
+		home:      home,
+		config:    config,
 		install:   filepath.Join(root, "install"),
 		bin:       filepath.Join(root, "bin"),
 		stubDir:   filepath.Join(root, "stub-bin"),
