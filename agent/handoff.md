@@ -11,10 +11,10 @@ snapshot_at: 2026-08-29
 
 ## 当前执行
 
-- 执行者：无（`WP-M2-INSTALL-UNIX` 完成后的安全停点）。
-- 工作包：`WP-M2-INSTALL-UNIX`（`complete`）；下一工作包为 `WP-M2-INSTALL-WINDOWS`（未开始）。
-- 修改边界：本窗口仅修改 `install.sh`、Unix 安装器测试以及本文件与正式状态的最小事实更新；未修改 Windows 安装器、workflow、发布资产、校园网会话，未处理隔离工作区、敏感备份或 rewrite mirror，也未执行 force-push、创建 release/tag/资产。
-- 停止条件：进入下一工作包前重新读取离线安装规范并核对 `origin/main`、rulesets、签名和工作树；`WP-M2-INSTALL-WINDOWS` 仅允许修改 `install.ps1` 与 Windows 测试。若需要扩张到 workflow、发布、真实安装目标或六平台原生 release-asset 矩阵，或 refs/rulesets 漂移，则立即停止。
+- 执行者：Codex。
+- 工作包：`WP-M2-INSTALL-WINDOWS`（`in_progress`）；分支 `codex/v1-m2-install-windows` 从精确 `origin/main` `074fcd5f1f62920bf65685a16900a140e1d386b7` / tree `ee1aa3e7b64b318cebe36c6566a60ea1fc717892` 创建。
+- 修改边界：本窗口仅修改 `install.ps1`、Windows 安装器测试以及本文件与正式状态的最小事实更新；不修改 Unix 安装器、workflow、release script、发布资产或真实安装目标，不接触校园网会话、隔离工作区、敏感备份或 rewrite mirror，也不执行 force-push、创建 release/tag/资产。
+- 停止条件：若实现需要扩张到上述边界外、触及真实用户安装目录或六平台原生 release-asset 矩阵，或发现 refs/SHA、repository identity、required checks、rulesets、签名配置漂移或权限不足，则立即停止。提交前必须通过 Windows 原生测试与全局门禁，并生成可由 GitHub 验证的 SSH 签名提交。
 
 ## 已完成
 
