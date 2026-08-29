@@ -89,6 +89,7 @@ func (f *windowsFixture) environment(overrides map[string]string) []string {
 		"APPDATA":                              true,
 		"HOME":                                 true,
 		"LOCALAPPDATA":                         true,
+		"PSMODULEPATH":                         true,
 		"USERPROFILE":                          true,
 		"IPGW_VERSION":                         true,
 		"IPGW_INSTALL_ROOT":                    true,
@@ -680,7 +681,7 @@ foreach($sid in @($u,$s,$a)){
   $rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,[Security.AccessControl.FileSystemRights]::FullControl,$inherit,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow)
   [void]$acl.AddAccessRule($rule)
 }
-Set-Acl -LiteralPath $p -AclObject $acl`
+[IO.Directory]::SetAccessControl($p,$acl)`
 	runPowerShellHelper(t, script, path)
 }
 
@@ -694,7 +695,8 @@ func assertPrivateWindowsACL(t *testing.T, path string, requireProtected bool) {
 $requireProtected=[bool]::Parse($args[1])
 $u=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $allowed=@($u,'S-1-5-18','S-1-5-32-544')
-$acl=Get-Acl -LiteralPath $p
+$sections=[Security.AccessControl.AccessControlSections]::Access
+$acl=if([IO.Directory]::Exists($p)){[IO.Directory]::GetAccessControl($p,$sections)}else{[IO.File]::GetAccessControl($p,$sections)}
 if($requireProtected -and -not $acl.AreAccessRulesProtected){throw 'ACL inheritance is not protected'}
 foreach($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])){
   if($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and $allowed -cnotcontains $rule.IdentityReference.Value){throw ('unexpected allow ACE: '+$rule.IdentityReference.Value)}
@@ -705,11 +707,11 @@ foreach($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIde
 func grantEveryoneWrite(t *testing.T, path string) {
 	t.Helper()
 	script := `$p=$args[0]
-$acl=Get-Acl -LiteralPath $p
+$acl=[IO.File]::GetAccessControl($p,[Security.AccessControl.AccessControlSections]::Access)
 $sid=New-Object Security.Principal.SecurityIdentifier('S-1-1-0')
 $rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,[Security.AccessControl.FileSystemRights]::Write,[Security.AccessControl.AccessControlType]::Allow)
 [void]$acl.AddAccessRule($rule)
-Set-Acl -LiteralPath $p -AclObject $acl`
+[IO.File]::SetAccessControl($p,$acl)`
 	runPowerShellHelper(t, script, path)
 }
 

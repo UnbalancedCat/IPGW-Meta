@@ -190,7 +190,9 @@ function Assert-PrivateDirectory {
         (($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
         throw "$Label must be a real directory"
     }
-    $Acl = Get-Acl -LiteralPath $LiteralPath
+    $Sections = [Security.AccessControl.AccessControlSections]::Owner -bor
+        [Security.AccessControl.AccessControlSections]::Access
+    $Acl = [IO.Directory]::GetAccessControl($LiteralPath, $Sections)
     $Owner = $Acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
     if ($Owner -cne $CurrentUserSid.Value -or -not $Acl.AreAccessRulesProtected) {
         throw "$Label must be owned by the current user with protected ACL inheritance"
@@ -222,7 +224,10 @@ function Assert-PrivateFileAcl {
         [Parameter(Mandatory = $true)][string]$Label
     )
     [void](Assert-RegularFile -LiteralPath $LiteralPath -Label $Label)
-    $Acl = Get-Acl -LiteralPath $LiteralPath
+    $Acl = [IO.File]::GetAccessControl(
+        $LiteralPath,
+        [Security.AccessControl.AccessControlSections]::Access
+    )
     foreach ($Rule in $Acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
         if ($Rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
             $AllowedPrivateSids -cnotcontains $Rule.IdentityReference.Value) {
@@ -240,7 +245,10 @@ function Assert-UntrustedPrincipalsCannotWrite {
         [Security.AccessControl.FileSystemRights]::Delete -bor
         [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
         [Security.AccessControl.FileSystemRights]::TakeOwnership
-    $Acl = Get-Acl -LiteralPath $LiteralPath
+    $Acl = [IO.File]::GetAccessControl(
+        $LiteralPath,
+        [Security.AccessControl.AccessControlSections]::Access
+    )
     foreach ($Rule in $Acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
         if ($Rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
             $Untrusted -ccontains $Rule.IdentityReference.Value -and
