@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/UnbalancedCat/ipgw-meta/internal/candidate"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -85,36 +86,53 @@ func prepareNativeInstallAsset(t *testing.T, privateRoot string) nativeInstallAs
 		t.Fatalf("%s must be absolute", nativeArtifactRootEnv)
 	}
 	assertPlainDirectory(t, artifactRoot, "native install artifact root")
-	assertExactDirectoryEntries(t, artifactRoot, []string{nativeArtifactManifest, "release"})
-
-	manifestPath := filepath.Join(artifactRoot, nativeArtifactManifest)
-	manifestBytes := readBoundedRegularFile(t, manifestPath, 64*1024, "native install artifact manifest")
-	var manifest nativeInstallManifest
-	decoder := json.NewDecoder(strings.NewReader(string(manifestBytes)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&manifest); err != nil {
-		t.Fatalf("decode native install artifact manifest: %v", err)
+	candidateManifestPath := filepath.Join(artifactRoot, "candidate-manifest.json")
+	_, candidateManifestErr := os.Lstat(candidateManifestPath)
+	candidateMode := candidateManifestErr == nil
+	if candidateManifestErr != nil && !os.IsNotExist(candidateManifestErr) {
+		t.Fatalf("inspect candidate manifest: %v", candidateManifestErr)
 	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		t.Fatalf("native install artifact manifest has trailing JSON: %v", err)
-	}
-	if manifest.SchemaVersion != 1 || manifest.ArtifactKind != "ipgw-native-install-v1" {
-		t.Fatal("native install artifact manifest identity mismatch")
-	}
-	if manifest.SourceCommit != sourceCommit || manifest.SourceTree != sourceTree || manifest.Version != version {
-		t.Fatal("native install artifact source or version mismatch")
-	}
-	for name, value := range map[string]string{
-		"source commit":           manifest.SourceCommit,
-		"source tree":             manifest.SourceTree,
-		"release checksum digest": manifest.ReleaseSHA256SUMSSHA256,
-	} {
-		if !isLowerHex(value, 64) && name == "release checksum digest" {
-			t.Fatalf("%s is not lowercase SHA-256", name)
+	releaseSHA256SUMSSHA256 := ""
+	if candidateMode {
+		result, err := candidate.Verify(artifactRoot)
+		if err != nil {
+			t.Fatalf("verify candidate set: %v", err)
 		}
-		if name != "release checksum digest" && !isLowerHex(value, 40) {
-			t.Fatalf("%s is not a full lowercase Git object ID", name)
+		if version != candidate.Version || result.SourceCommit != sourceCommit || result.SourceTree != sourceTree {
+			t.Fatal("candidate set source or version mismatch")
 		}
+	} else {
+		assertExactDirectoryEntries(t, artifactRoot, []string{nativeArtifactManifest, "release"})
+		manifestPath := filepath.Join(artifactRoot, nativeArtifactManifest)
+		manifestBytes := readBoundedRegularFile(t, manifestPath, 64*1024, "native install artifact manifest")
+		var manifest nativeInstallManifest
+		decoder := json.NewDecoder(strings.NewReader(string(manifestBytes)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&manifest); err != nil {
+			t.Fatalf("decode native install artifact manifest: %v", err)
+		}
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			t.Fatalf("native install artifact manifest has trailing JSON: %v", err)
+		}
+		if manifest.SchemaVersion != 1 || manifest.ArtifactKind != "ipgw-native-install-v1" {
+			t.Fatal("native install artifact manifest identity mismatch")
+		}
+		if manifest.SourceCommit != sourceCommit || manifest.SourceTree != sourceTree || manifest.Version != version {
+			t.Fatal("native install artifact source or version mismatch")
+		}
+		for name, value := range map[string]string{
+			"source commit":           manifest.SourceCommit,
+			"source tree":             manifest.SourceTree,
+			"release checksum digest": manifest.ReleaseSHA256SUMSSHA256,
+		} {
+			if !isLowerHex(value, 64) && name == "release checksum digest" {
+				t.Fatalf("%s is not lowercase SHA-256", name)
+			}
+			if name != "release checksum digest" && !isLowerHex(value, 40) {
+				t.Fatalf("%s is not a full lowercase Git object ID", name)
+			}
+		}
+		releaseSHA256SUMSSHA256 = manifest.ReleaseSHA256SUMSSHA256
 	}
 	if version == "" || strings.ContainsAny(version, "\r\n") {
 		t.Fatal("native install artifact version is empty or multiline")
@@ -133,11 +151,14 @@ func prepareNativeInstallAsset(t *testing.T, privateRoot string) nativeInstallAs
 		"ipgw-meta-windows-arm64.zip",
 	}
 	expectedRelease := append([]string{"SHA256SUMS"}, expectedChecksummed...)
+	if candidateMode {
+		expectedRelease = append(expectedRelease, "release-manifest.json")
+	}
 	assertExactDirectoryEntries(t, releaseDir, expectedRelease)
 
 	checksumPath := filepath.Join(releaseDir, "SHA256SUMS")
 	checksumBytes := readBoundedRegularFile(t, checksumPath, 64*1024, "release SHA256SUMS")
-	if hashNativeFile(t, checksumPath) != manifest.ReleaseSHA256SUMSSHA256 {
+	if !candidateMode && hashNativeFile(t, checksumPath) != releaseSHA256SUMSSHA256 {
 		t.Fatal("release SHA256SUMS digest does not match artifact manifest")
 	}
 	checksums := parseNativeChecksums(t, checksumBytes, expectedChecksummed)

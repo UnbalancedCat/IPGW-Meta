@@ -32,6 +32,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install pinned actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Validate GitHub Actions workflows
+        run: '"$(go env GOPATH)/bin/actionlint"'
       - name: Check documentation contracts
         run: go run ./cmd/doccheck --check
       - name: Vet

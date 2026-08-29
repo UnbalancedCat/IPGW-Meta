@@ -1,0 +1,562 @@
+name: Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Exact v1 release version
+        required: true
+        type: choice
+        options:
+          - v1.0.0
+      source_commit:
+        description: Exact protected main commit (40 lowercase hex)
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: candidate-${{ inputs.release_version }}
+  cancel-in-progress: false
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  preflight:
+    name: Verify candidate source and gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      candidate_id: ${{ steps.metadata.outputs.candidate_id }}
+      source_tree: ${{ steps.metadata.outputs.source_tree }}
+      source_date_epoch: ${{ steps.metadata.outputs.source_date_epoch }}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate immutable dispatch inputs
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $RELEASE_VERSION == v1.0.0 ]]
+          [[ $SOURCE_COMMIT =~ ^[0-9a-f]{40}$ ]]
+          [[ $EVENT_REF == refs/heads/main ]]
+          [[ $EVENT_SHA == "$SOURCE_COMMIT" ]]
+          [[ $(git rev-parse HEAD) == "$SOURCE_COMMIT" ]]
+          git diff --exit-code --quiet HEAD --
+      - name: Verify protected main, tag absence, signature, and exact checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch_json="$RUNNER_TEMP/candidate-main.json"
+          commit_json="$RUNNER_TEMP/candidate-commit.json"
+          checks_json="$RUNNER_TEMP/candidate-checks.json"
+          tag_json="$RUNNER_TEMP/candidate-tag.json"
+
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$SOURCE_COMMIT" '
+            .name == "main" and .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+
+          tag_status=$(curl --silent --show-error --location             --proto '=https' --proto-redir '=https'             --header "Authorization: Bearer $GH_TOKEN"             --header 'Accept: application/vnd.github+json'             --header 'X-GitHub-Api-Version: 2022-11-28'             --output "$tag_json" --write-out '%{http_code}'             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION")
+          [[ $tag_status == 404 ]]
+
+          gh api "repos/$GITHUB_REPOSITORY/git/commits/$SOURCE_COMMIT" >"$commit_json"
+          jq -e --arg sha "$SOURCE_COMMIT" '
+            .sha == $sha and
+            .verification.verified == true and
+            .verification.reason == "valid"
+          ' "$commit_json" >/dev/null
+
+          gh api --method GET             "repos/$GITHUB_REPOSITORY/commits/$SOURCE_COMMIT/check-runs"             -f per_page=100 >"$checks_json"
+          jq -e --arg sha "$SOURCE_COMMIT" '
+            . as $root |
+            [
+              "Documentation, vet, and secrets",
+              "Tests (ubuntu-latest)",
+              "Tests (windows-latest)",
+              "Tests (macos-latest)",
+              "Race detector",
+              "Cross-build six supported targets",
+              "Package one native-install asset batch",
+              "Native install (linux-amd64, full)",
+              "Native install (linux-arm64, smoke)",
+              "Native install (windows-amd64, full)",
+              "Native install (windows-arm64, smoke)",
+              "Native install (darwin-amd64, smoke)",
+              "Native install (darwin-arm64, full)"
+            ] as $expected |
+            ($root.total_count <= 100) and
+            ($expected | all(.[] as $name;
+              ($root.check_runs |
+                map(select(
+                  .name == $name and
+                  .head_sha == $sha and
+                  .app.id == 15368
+                )) |
+                sort_by(.started_at, .id) |
+                last
+              ) as $run |
+              $run != null and
+              $run.status == "completed" and
+              $run.conclusion == "success"
+            ))
+          ' "$checks_json" >/dev/null
+      - name: Require completed M0 through M2
+        run: make candidate-gate
+      - name: Derive frozen candidate metadata
+        id: metadata
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $GITHUB_RUN_ID =~ ^[1-9][0-9]*$ ]]
+          [[ $GITHUB_RUN_ATTEMPT =~ ^[1-9][0-9]*$ ]]
+          source_tree=$(git rev-parse 'HEAD^{tree}')
+          source_date_epoch=$(git show -s --format=%ct HEAD)
+          [[ $source_tree =~ ^[0-9a-f]{40}$ ]]
+          [[ $source_date_epoch =~ ^[1-9][0-9]*$ ]]
+          candidate_id="$RELEASE_VERSION-${SOURCE_COMMIT:0:12}-$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+          printf 'candidate_id=%s\n' "$candidate_id" >>"$GITHUB_OUTPUT"
+          printf 'source_tree=%s\n' "$source_tree" >>"$GITHUB_OUTPUT"
+          printf 'source_date_epoch=%s\n' "$source_date_epoch" >>"$GITHUB_OUTPUT"
+
+  build:
+    name: Build and upload one immutable candidate-set
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact_id: ${{ steps.record.outputs.artifact_id }}
+      artifact_digest: ${{ steps.record.outputs.artifact_digest }}
+      artifact_name: ${{ steps.record.outputs.artifact_name }}
+      candidate_set_sha256: ${{ steps.record.outputs.candidate_set_sha256 }}
+      build_input_sha256: ${{ steps.record.outputs.build_input_sha256 }}
+      release_manifest_sha256: ${{ steps.record.outputs.release_manifest_sha256 }}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build all twenty frozen outputs exactly once
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_file="$RUNNER_TEMP/ipgw-candidate-version"
+          printf '%s\n' "$RELEASE_VERSION" >"$version_file"
+          RELEASE_VERSION_FILE="$version_file"             make candidate-build BUILD_DIR="$RUNNER_TEMP/candidate-build"
+      - name: Assemble and verify deterministic candidate-set
+        env:
+          CANDIDATE_ID: ${{ needs.preflight.outputs.candidate_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./internal/cmd/ipgw-candidate assemble             --repository "$GITHUB_WORKSPACE"             --source-commit "$SOURCE_COMMIT"             --candidate-id "$CANDIDATE_ID"             --workflow-run-id "$GITHUB_RUN_ID"             --workflow-run-attempt "$GITHUB_RUN_ATTEMPT"             --build-dir "$RUNNER_TEMP/candidate-build"             --output-dir "$RUNNER_TEMP/candidate-set"
+          go run ./internal/cmd/ipgw-candidate verify             --candidate-set "$RUNNER_TEMP/candidate-set"
+      - name: Confirm source is still eligible before upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          make candidate-gate
+          branch_json="$RUNNER_TEMP/candidate-main-before-upload.json"
+          tag_json="$RUNNER_TEMP/candidate-tag-before-upload.json"
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$SOURCE_COMMIT" '
+            .name == "main" and .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+          tag_status=$(curl --silent --show-error --location             --proto '=https' --proto-redir '=https'             --header "Authorization: Bearer $GH_TOKEN"             --header 'Accept: application/vnd.github+json'             --header 'X-GitHub-Api-Version: 2022-11-28'             --output "$tag_json" --write-out '%{http_code}'             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION")
+          [[ $tag_status == 404 ]]
+      - name: Upload single immutable candidate-set
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-set-${{ needs.preflight.outputs.candidate_id }}
+          path: ${{ runner.temp }}/candidate-set
+          if-no-files-found: error
+          include-hidden-files: false
+          compression-level: 0
+          overwrite: false
+          retention-days: 90
+      - name: Verify and record uploaded artifact identity
+        id: record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPLOAD_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          UPLOAD_ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+          EXPECTED_ARTIFACT_NAME: candidate-set-${{ needs.preflight.outputs.candidate_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $UPLOAD_ARTIFACT_ID =~ ^[1-9][0-9]*$ ]]
+          case "$UPLOAD_ARTIFACT_DIGEST" in
+            sha256:[0-9a-f][0-9a-f]*) artifact_digest=$UPLOAD_ARTIFACT_DIGEST ;;
+            [0-9a-f][0-9a-f]*) artifact_digest="sha256:$UPLOAD_ARTIFACT_DIGEST" ;;
+            *) exit 1 ;;
+          esac
+          [[ $artifact_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          run_json="$RUNNER_TEMP/candidate-run-attempt.json"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" \
+            >"$run_json"
+          jq -e \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg sha "$SOURCE_COMMIT" \
+            --arg repository "$GITHUB_REPOSITORY" '
+              .id == $run_id and
+              .run_attempt == $run_attempt and
+              .event == "workflow_dispatch" and
+              .head_branch == "main" and
+              .head_sha == $sha and
+              .path == ".github/workflows/candidate.yml" and
+              .repository.full_name == $repository
+            ' "$run_json" >/dev/null
+          repository_id=$(jq -er '.repository.id' "$run_json")
+          [[ $repository_id =~ ^[1-9][0-9]*$ ]]
+
+          artifact_json="$RUNNER_TEMP/candidate-artifact.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$UPLOAD_ARTIFACT_ID" >"$artifact_json"
+          jq -e \
+            --argjson artifact_id "$UPLOAD_ARTIFACT_ID" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson repository_id "$repository_id" \
+            --arg name "$EXPECTED_ARTIFACT_NAME" \
+            --arg digest "$artifact_digest" \
+            --arg sha "$SOURCE_COMMIT" '
+              .id == $artifact_id and
+              .name == $name and
+              .digest == $digest and
+              .expired == false and
+              .workflow_run.id == $run_id and
+              .workflow_run.repository_id == $repository_id and
+              .workflow_run.head_repository_id == $repository_id and
+              .workflow_run.head_branch == "main" and
+              .workflow_run.head_sha == $sha
+            ' "$artifact_json" >/dev/null
+
+          candidate_set_sha256=$(sha256sum "$RUNNER_TEMP/candidate-set/candidate-manifest.json" | awk '{print $1}')
+          release_manifest_sha256=$(sha256sum "$RUNNER_TEMP/candidate-set/release/release-manifest.json" | awk '{print $1}')
+          build_input_sha256=$(jq -er '.build_input_sha256' "$RUNNER_TEMP/candidate-set/candidate-manifest.json")
+          [[ $candidate_set_sha256 =~ ^[0-9a-f]{64}$ ]]
+          [[ $release_manifest_sha256 =~ ^[0-9a-f]{64}$ ]]
+          [[ $build_input_sha256 =~ ^[0-9a-f]{64}$ ]]
+          printf 'artifact_id=%s\n' "$UPLOAD_ARTIFACT_ID" >>"$GITHUB_OUTPUT"
+          printf 'artifact_digest=%s\n' "$artifact_digest" >>"$GITHUB_OUTPUT"
+          printf 'artifact_name=%s\n' "$EXPECTED_ARTIFACT_NAME" >>"$GITHUB_OUTPUT"
+          printf 'candidate_set_sha256=%s\n' "$candidate_set_sha256" >>"$GITHUB_OUTPUT"
+          printf 'release_manifest_sha256=%s\n' "$release_manifest_sha256" >>"$GITHUB_OUTPUT"
+          printf 'build_input_sha256=%s\n' "$build_input_sha256" >>"$GITHUB_OUTPUT"
+
+  native-install:
+    name: Candidate native install (${{ matrix.target }}, ${{ matrix.test_mode }})
+    needs:
+      - preflight
+      - build
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-amd64
+            test_mode: full
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+            test_mode: smoke
+          - os: windows-2022
+            target: windows-amd64
+            test_mode: full
+          - os: windows-11-arm
+            target: windows-arm64
+            test_mode: smoke
+          - os: macos-15-intel
+            target: darwin-amd64
+            test_mode: smoke
+          - os: macos-15
+            target: darwin-arm64
+            test_mode: full
+    runs-on: ${{ matrix.os }}
+    env:
+      IPGW_NATIVE_INSTALL_REQUIRED: "1"
+      IPGW_NATIVE_INSTALL_VERSION: ${{ inputs.release_version }}
+      IPGW_NATIVE_INSTALL_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      IPGW_NATIVE_INSTALL_SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download exact candidate artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/ipgw-candidate-set
+      - name: Verify full candidate-set
+        run: >-
+          go run ./internal/cmd/ipgw-candidate verify
+          --candidate-set "${{ runner.temp }}/ipgw-candidate-set"
+      - name: Run release-asset smoke
+        if: matrix.test_mode == 'smoke'
+        env:
+          IPGW_NATIVE_INSTALL_ARTIFACT_ROOT: ${{ runner.temp }}/ipgw-candidate-set
+        run: go test -count=1 -run '^TestNativeReleaseAssetSmoke$' ./internal/installtest
+      - name: Run release-asset and complete failure matrix
+        if: matrix.test_mode == 'full'
+        env:
+          IPGW_NATIVE_INSTALL_ARTIFACT_ROOT: ${{ runner.temp }}/ipgw-candidate-set
+        run: go test -count=1 ./internal/installtest
+
+  attest:
+    name: Attest verified candidate-set and public assets
+    needs:
+      - preflight
+      - build
+      - native-install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download exact candidate artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/ipgw-candidate-set
+      - name: Reverify candidate and prepare exact public subject set
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./internal/cmd/ipgw-candidate verify             --candidate-set "$RUNNER_TEMP/ipgw-candidate-set"
+          (
+            cd "$RUNNER_TEMP/ipgw-candidate-set/release"
+            sha256sum               SHA256SUMS               install.ps1               install.sh               ipgw-meta-darwin-amd64.tar.gz               ipgw-meta-darwin-arm64.tar.gz               ipgw-meta-linux-amd64.tar.gz               ipgw-meta-linux-arm64.tar.gz               ipgw-meta-windows-amd64.zip               ipgw-meta-windows-arm64.zip               release-manifest.json
+          ) >"$RUNNER_TEMP/ipgw-public-subjects.sha256"
+          [[ $(wc -l <"$RUNNER_TEMP/ipgw-public-subjects.sha256") -eq 10 ]]
+      - name: Confirm source is still eligible before attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          make candidate-gate
+          branch_json="$RUNNER_TEMP/candidate-main-before-attestation.json"
+          tag_json="$RUNNER_TEMP/candidate-tag-before-attestation.json"
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$SOURCE_COMMIT" '
+            .name == "main" and .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+          tag_status=$(curl --silent --show-error --location             --proto '=https' --proto-redir '=https'             --header "Authorization: Bearer $GH_TOKEN"             --header 'Accept: application/vnd.github+json'             --header 'X-GitHub-Api-Version: 2022-11-28'             --output "$tag_json" --write-out '%{http_code}'             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION")
+          [[ $tag_status == 404 ]]
+      - name: Download and hash exact raw artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact_digest }}
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/ipgw-raw-artifact"
+          raw_artifact="$RUNNER_TEMP/ipgw-raw-artifact/$ARTIFACT_NAME"
+          curl --fail --silent --show-error --location             --proto '=https' --proto-redir '=https'             --header "Authorization: Bearer $GH_TOKEN"             --header 'Accept: application/vnd.github+json'             --header 'X-GitHub-Api-Version: 2022-11-28'             --output "$raw_artifact"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"
+          expected=${ARTIFACT_DIGEST#sha256:}
+          actual=$(sha256sum "$raw_artifact" | awk '{print $1}')
+          [[ $actual == "$expected" ]]
+      - name: Attest candidate artifact digest
+        id: attest_candidate
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ needs.build.outputs.artifact_name }}
+          subject-digest: ${{ needs.build.outputs.artifact_digest }}
+      - name: Attest exact public release assets
+        id: attest_public
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/ipgw-public-subjects.sha256
+      - name: Verify candidate and public attestation bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact_digest }}
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+          CANDIDATE_BUNDLE: ${{ steps.attest_candidate.outputs.bundle-path }}
+          PUBLIC_BUNDLE: ${{ steps.attest_public.outputs.bundle-path }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          signer_workflow="github.com/$GITHUB_REPOSITORY/.github/workflows/candidate.yml"
+          expected_invocation_uri="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
+          raw_artifact="$RUNNER_TEMP/ipgw-raw-artifact/$ARTIFACT_NAME"
+          candidate_verify="$RUNNER_TEMP/ipgw-candidate-attestation.json"
+          gh attestation verify "$raw_artifact"             --repo "$GITHUB_REPOSITORY"             --bundle "$CANDIDATE_BUNDLE"             --signer-workflow "$signer_workflow"             --source-ref refs/heads/main             --source-digest "$SOURCE_COMMIT"             --deny-self-hosted-runners             --format json >"$candidate_verify"
+          artifact_hash=${ARTIFACT_DIGEST#sha256:}
+          jq -e \
+            --arg name "$ARTIFACT_NAME" \
+            --arg digest "$artifact_hash" \
+            --arg invocation "$expected_invocation_uri" '
+            length == 1 and
+            .[0].verificationResult.signature.certificate.runInvocationURI == $invocation and
+            .[0].verificationResult.statement.subject == [
+              {"name": $name, "digest": {"sha256": $digest}}
+            ]
+          ' "$candidate_verify" >/dev/null
+
+          expected_subjects="$RUNNER_TEMP/ipgw-public-subjects.json"
+          jq -Rn '[
+            inputs |
+            capture("^(?<digest>[0-9a-f]{64})  (?<name>[0-9A-Za-z._-]+)$") |
+            {name: .name, digest: {sha256: .digest}}
+          ] | sort_by(.name)'             "$RUNNER_TEMP/ipgw-public-subjects.sha256" >"$expected_subjects"
+
+          first=1
+          while read -r digest name extra; do
+            [[ $digest =~ ^[0-9a-f]{64}$ ]]
+            [[ -n $name && -z ${extra:-} ]]
+            public_verify="$RUNNER_TEMP/ipgw-public-attestation-$name.json"
+            gh attestation verify               "$RUNNER_TEMP/ipgw-candidate-set/release/$name"               --repo "$GITHUB_REPOSITORY"               --bundle "$PUBLIC_BUNDLE"               --signer-workflow "$signer_workflow"               --source-ref refs/heads/main               --source-digest "$SOURCE_COMMIT"               --deny-self-hosted-runners               --format json >"$public_verify"
+            if [[ $first -eq 1 ]]; then
+              jq -e --arg invocation "$expected_invocation_uri" --slurpfile expected "$expected_subjects" '
+                length == 1 and
+                .[0].verificationResult.signature.certificate.runInvocationURI == $invocation and
+                ((.[0].verificationResult.statement.subject | sort_by(.name)) == $expected[0])
+              ' "$public_verify" >/dev/null
+              first=0
+            fi
+          done <"$RUNNER_TEMP/ipgw-public-subjects.sha256"
+          [[ $first -eq 0 ]]
+      - name: Final source and tag drift check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch_json="$RUNNER_TEMP/candidate-main-final.json"
+          tag_json="$RUNNER_TEMP/candidate-tag-final.json"
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$SOURCE_COMMIT" '
+            .name == "main" and .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+          tag_status=$(curl --silent --show-error --location             --proto '=https' --proto-redir '=https'             --header "Authorization: Bearer $GH_TOKEN"             --header 'Accept: application/vnd.github+json'             --header 'X-GitHub-Api-Version: 2022-11-28'             --output "$tag_json" --write-out '%{http_code}'             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION")
+          [[ $tag_status == 404 ]]
+      - name: Record verified candidate identity
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          CANDIDATE_ID: ${{ needs.preflight.outputs.candidate_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
+          ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+          ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact_digest }}
+          CANDIDATE_SET_SHA256: ${{ needs.build.outputs.candidate_set_sha256 }}
+          BUILD_INPUT_SHA256: ${{ needs.build.outputs.build_input_sha256 }}
+          RELEASE_MANIFEST_SHA256: ${{ needs.build.outputs.release_manifest_sha256 }}
+          CANDIDATE_ATTESTATION_ID: ${{ steps.attest_candidate.outputs.attestation-id }}
+          PUBLIC_ATTESTATION_ID: ${{ steps.attest_public.outputs.attestation-id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n ${GITHUB_STEP_SUMMARY:-} ]]
+          [[ $SOURCE_COMMIT =~ ^[0-9a-f]{40}$ ]]
+          [[ $SOURCE_TREE =~ ^[0-9a-f]{40}$ ]]
+          [[ $GITHUB_RUN_ID =~ ^[1-9][0-9]*$ ]]
+          [[ $GITHUB_RUN_ATTEMPT =~ ^[1-9][0-9]*$ ]]
+          [[ $ARTIFACT_ID =~ ^[1-9][0-9]*$ ]]
+          [[ $CANDIDATE_ATTESTATION_ID =~ ^[1-9][0-9]*$ ]]
+          [[ $PUBLIC_ATTESTATION_ID =~ ^[1-9][0-9]*$ ]]
+          [[ $ARTIFACT_DIGEST =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ $CANDIDATE_SET_SHA256 =~ ^[0-9a-f]{64}$ ]]
+          [[ $BUILD_INPUT_SHA256 =~ ^[0-9a-f]{64}$ ]]
+          [[ $RELEASE_MANIFEST_SHA256 =~ ^[0-9a-f]{64}$ ]]
+          expected_candidate_id="$RELEASE_VERSION-${SOURCE_COMMIT:0:12}-$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+          [[ $CANDIDATE_ID == "$expected_candidate_id" ]]
+          [[ $ARTIFACT_NAME == "candidate-set-$CANDIDATE_ID" ]]
+          [[ $(wc -l <"$RUNNER_TEMP/ipgw-public-subjects.sha256") -eq 10 ]]
+
+          {
+            printf '## Verified candidate identity\n\n'
+            printf -- '- Candidate ID: `%s`\n' "$CANDIDATE_ID"
+            printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
+            printf -- '- Source tree: `%s`\n' "$SOURCE_TREE"
+            printf -- '- Workflow run: `%s`, attempt `%s`\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf -- '- Artifact: `%s` (ID `%s`)\n' "$ARTIFACT_NAME" "$ARTIFACT_ID"
+            printf -- '- Artifact digest: `%s`\n' "$ARTIFACT_DIGEST"
+            printf -- '- Candidate-set SHA-256: `%s`\n' "$CANDIDATE_SET_SHA256"
+            printf -- '- Build-input SHA-256: `%s`\n' "$BUILD_INPUT_SHA256"
+            printf -- '- Release-manifest SHA-256: `%s`\n' "$RELEASE_MANIFEST_SHA256"
+            printf -- '- Candidate attestation ID: `%s`\n' "$CANDIDATE_ATTESTATION_ID"
+            printf -- '- Public-assets attestation ID: `%s`\n' "$PUBLIC_ATTESTATION_ID"
+            printf '\n### Public attestation subjects\n\n'
+            while read -r digest name extra; do
+              [[ $digest =~ ^[0-9a-f]{64}$ ]]
+              [[ $name =~ ^[0-9A-Za-z._-]+$ ]]
+              [[ -z ${extra:-} ]]
+              printf -- '- `%s`: `%s`\n' "$name" "$digest"
+            done <"$RUNNER_TEMP/ipgw-public-subjects.sha256"
+          } >>"$GITHUB_STEP_SUMMARY"

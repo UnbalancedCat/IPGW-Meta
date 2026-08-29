@@ -12,9 +12,9 @@ snapshot_at: 2026-08-30
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`WP-M3-CANDIDATE`（`not_started`；依赖 `WP-M3-LIVEGATE-RUNNER` 已满足，但修改前必须先只读诊断 release workflow 零-job failure）。
-- 修改边界：下一步只允许读取当前 `main`、`.github/workflows/release.yml`、相关 docs 与 GitHub Actions run/check 元数据，复现并解释零-job failure；开始任何 candidate/workflow 修改前必须先在本文件声明新的工作包边界和停止条件。禁止创建 candidate-set、attestation、release、tag 或发布资产，禁止启动真实网络/认证/QR/校园网会话。
-- 停止条件：任一 ref/SHA、ruleset、签名、required check 或工作树漂移；诊断需要重跑或修改 workflow、扩大 candidate/promotion 边界、启动真实网络/认证/QR/校园网会话、接触凭据或原始输出；需要创建 release/tag/发布资产、force-push，或接触旧工作区、敏感备份、rewrite mirror 时立即停止。
+- 工作包：`WP-M3-CANDIDATE`（`in_progress`；base main `f907e270273bb376b37439e149567fa0398ed976`；release 零-job 根因已只读确认；本地实现与全部门禁已通过，待签名提交、PR、CI 与普通合并）。
+- 修改边界：按 [`REL-CANDIDATE-001`](../docs/operations/release.md#rel-candidate-001候选与发布顺序) 与 [`REL-ATTEST-001`](../docs/operations/release.md#rel-attest-001candidate-manifest-与-provenance) 先冻结 full candidate manifest/build-input 契约，再只在 candidate workflow、manifest/packaging 实现、对应构建脚本与合成测试中实现一次构建、公开资产/私有工具分区、digest 与 attestation 门禁；移除或隔离现有 tag 阶段重建并公开 release 的可达路径。禁止修改公共 SDK/CLI/JSON/退出码、live-gate runner、安装器、promotion lock、ruleset，禁止创建正式 candidate-set、tag、release 或发布资产，禁止启动真实网络/认证/QR/校园网会话。
+- 停止条件：任一 ref/SHA、ruleset、签名、required check 或工作树漂移；docs 无法唯一确定 full manifest、artifact 或 attestation 安全语义；需要进入 promotion/tag/draft/public release、创建正式 candidate artifact、改变 main/tag 保护、修改边界外文件、启动真实会话、接触凭据/原始输出、force-push，或接触旧工作区、敏感备份、rewrite mirror 时立即停止。
 
 ## 已完成
 
@@ -41,9 +41,9 @@ snapshot_at: 2026-08-30
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
 - 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
-- 既有 `.github/workflows/release.yml` push runs `33259518906` 与 `33271252579` 均以零 job 即时失败；后者精确绑定 runner merge commit。它们不是当前 main required checks，也非 runner 工作包引入，但进入 `WP-M3-CANDIDATE` 修改前必须按发布规范只读诊断。
 
 ## 下一步
 
-- 先对 release push runs `33259518906` 与 `33271252579`、当前 workflow source 和 Actions 元数据做只读诊断；确认根因、规范边界与安全修复范围后，再声明并启动 `WP-M3-CANDIDATE`。最终 tag、公开 release 和发布资产仍需另行批准。
+- 只暂存当前工作包边界内文件，创建并验证 SSH 签名 implementation commit；正常 push 当前分支、创建 PR，等待六项 required checks 后普通合并。不得 dispatch candidate workflow 或创建 candidate artifact。
+- implementation merge 与收尾记录完成后，按 docs-first 新声明 `WP-M3-PROMOTION` 边界；只实现和合成验证 promotion，不创建签名 tag、draft 或公开 release。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
