@@ -11,10 +11,10 @@ snapshot_at: 2026-08-29
 
 ## 当前执行
 
-- 执行者：Codex。
-- 工作包：`WP-M2-CONFIG-CLOSE`（`in_progress`）。
-- 修改边界：仅修改 `internal/config`、迁移测试以及本文件与正式状态的最小事实更新；不修改安装器、workflow、发布面、校园网会话，不处理隔离工作区、敏感备份或 rewrite mirror，也不执行 force-push、创建 release/tag/资产。
-- 停止条件：仅按 [`MIG-TRANSACTION-001`](../docs/operations/config-migration.md#mig-transaction-001journal提交与回滚) 补齐失败注入、Unix 权限和 keyring backend 门禁；若发现需要修改公共 CLI/SDK/JSON/配置契约或 ADR、真实凭据/系统 keyring、范围外代码，或 refs/rulesets 漂移、既有门禁出现范围外失败，则立即停止。
+- 执行者：无（`WP-M2-CONFIG-CLOSE` 完成后的安全停点）。
+- 工作包：`WP-M2-CONFIG-CLOSE`（`complete`）；下一工作包为 `WP-M2-INSTALL-UNIX`（未开始）。
+- 修改边界：本窗口只修改 `internal/config`、迁移测试以及本文件与正式状态的事实更新；未修改安装器、workflow、发布面、校园网会话，未处理隔离工作区、敏感备份或 rewrite mirror，也未执行 force-push、创建 release/tag/资产。
+- 停止条件：进入下一工作包前重新读取离线安装规范并核对 `origin/main`、rulesets、签名和工作树；`WP-M2-INSTALL-UNIX` 仅允许修改 `install.sh` 与 Unix 测试。若需要扩张到 Windows、workflow、发布或真实安装目标，或 refs/门禁漂移，则立即停止。
 
 ## 已完成
 
@@ -29,14 +29,16 @@ snapshot_at: 2026-08-29
 - `WP-M0-VERIFY-REHOME`：`D:\project\Go\ipgw-meta-clean` 已从远端 fresh clone；旧重写 commit 对象不存在，secret scan/fsck/test/race/vet/doccheck 全部通过，该路径成为后续唯一权威工作区。
 - `WP-M0-RENAME-GOVERN`：仓库已小写改名并完成 canonical `origin`、独立 fresh-clone、PR #1 普通 merge 与 main/tag ruleset 核验。merge commit `f927d7316885a26c8289ba77bc04ed27e379d3c8` 双亲和 tree 精确匹配、GitHub 签名状态为 `valid`；main ruleset `21733128` 已要求 PR、签名提交、严格六检查并禁止删除/force-push，tag ruleset `21733211` 禁止 `v*` 更新/删除，两者均无 bypass。
 - `WP-BASELINE-VERIFY`：在精确 `main` `f927d7316885a26c8289ba77bc04ed27e379d3c8` 上完成 test/race/vet/doccheck、六目标三入口 cross-build、`internal/config` 六目标编译、合成 gitleaks canary、14 commits 全历史/refs/reflog 与工作树扫描、`fsck`；全部通过且临时目录已清理。
+- `WP-M2-CONFIG-CLOSE`：signed commit `598850195a65167d121c2fc86477cf56676bb8df` 补齐五个 journal phase 的逐事务失败注入、两类来源 backup 原字节/固定路径/跨平台权限验证，以及 keyring 写后报错与补偿失败恢复门禁；PR #3 首轮 CI run `33224027909` 六项 required checks 全部成功，本地全局门禁、固定 gitleaks `8.30.1` 扫描与 `fsck` 通过，临时目标已清理。
 - Signing key 登记后，`15fb31d`、`c562483`、`5bee31b`、`f1ca77c` 与 `907b3e7` 当前均由 GitHub 验证为 `verified=true, reason=valid`；不得为追溯修正签名状态而改写历史。
 
 ## 阻塞
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
 - 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
+- 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是当前 main required check，也非本工作包引入，但进入 M3 前必须按发布规范诊断。
 
 ## 下一步
 
-- 审计 `WP-M2-CONFIG-CLOSE` 现有覆盖，在允许范围内补齐失败注入、Unix 实际权限和合成 keyring backend 门禁；完成聚焦与全局门禁后更新正式状态并通过受保护分支合并。
+- 从受保护 `main` 新开分支执行 `WP-M2-INSTALL-UNIX`；修改范围仅为 `install.sh` 与 Unix 测试，按 [`REL-INSTALL-001`](../docs/operations/offline-install.md#rel-install-001离线-acquisition)补齐离线、路径、权限和 failpoint 门禁。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
