@@ -96,6 +96,16 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - PR #6 已以普通 merge 合入 merge commit `989cfad32aaed7352c50fb9e80233ac137362616`；双亲依次为原 main `6d9cde533d4d3bc511cc8122a96bfcfa114988a8` 与 PR head `130a698399d83b2f7cda2ab7581ac6ef4c60b8a1`，tree 为 `8c280f9c92dc739e74425a4be52e6abdae364775`，GitHub 签名为 `verified=true, reason=valid`。merge 后 CI run `33254131004` 六项检查全部成功，native run `33254130929` 的 package 与六个平台共七个 jobs 全部成功。
 - `WP-M2-INSTALL-NATIVE` 与 M2 已完成，下一工作包为 `WP-M3-LIVEGATE-SCHEMA`。本节 artifact 是仅用于本 PR 原生门禁的临时 release-shaped 验证产物，不是 M3 candidate-set、公开 release、tag 或发布资产。
 
+## 2026-08-29 Live-gate schema 收敛核验
+
+- `WP-M3-LIVEGATE-SCHEMA` 已按 docs-first 顺序固定 schema version 1：严格 18 个顶层字段与 5 个 step 字段、封闭枚举和四个精确环境 tuple、candidate/evidence ID 与小写 hash、canonical UTC time、capability transition、primary prefix/cleanup/result 以及产品/runner 退出码映射。
+- `internal/livegate` 已实现严格 UTF-8/64 KiB/unknown/duplicate/trailing JSON guards、canonical 单 LF 编码、固定且不回显输入的验证错误，并以泄漏 canary 覆盖 JSON、枚举、ID、时间、状态机与 cleanup 拒绝路径；focused coverage 为 94.3%。
+- 本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 全部通过。
+- 固定 gitleaks `8.30.1` 的合成 canary、28 commits 全历史、全部 refs/reflog 与工作树扫描均为 0 命中；`git fsck --full` 通过，仅报告四个已知 dangling tree，且无损坏或 dangling commit。
+- signed implementation commit `03ffa893dce68bf83886ca047b2c9c5760a351b9` 由 GitHub 验证为 `verified=true, reason=valid`。PR #8 已以普通 merge 合入 `01e4dc59bd7787cb382e9d2392f7e6c3052a569b`；双亲依次为 `0aaff5da9ac691bcb56538074a0b3c178b140808` 与 `03ffa893dce68bf83886ca047b2c9c5760a351b9`，tree 为 `6fa99e2f23efa0ef2ac6d1b269b52bcda0514148`，GitHub 签名为 `verified=true, reason=valid`。
+- merge 后 CI run `33259519538` 六项 required checks 和 native run `33259519515` 的 package 与六个平台共七个 jobs 全部成功；独立 release push run `33259518906` 仍以零 job 失败，须在 `WP-M3-CANDIDATE` / promotion 前诊断。
+- `WP-M3-LIVEGATE-SCHEMA` 完成；M3 保持 `in_progress`，下一工作包为 `WP-M3-LIVEGATE-RUNNER`。本工作包未实现 runner、candidate-set、attestation、release、tag 或 promotion，未启动校园网、QR、认证或其他网络会话。
+
 ## 2026-08-27 本地验收结果
 
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 均通过。
@@ -106,10 +116,10 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- 仓库治理、只读 baseline 与所有 M2 工作包均已完成；下一工作包为 `WP-M3-LIVEGATE-SCHEMA`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
+- 仓库治理、只读 baseline、所有 M2 工作包与 `WP-M3-LIVEGATE-SCHEMA` 均已完成；下一工作包为 `WP-M3-LIVEGATE-RUNNER`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
 - 六平台原生 release-shaped asset 安装矩阵已使用同一精确临时 PR artifact 完成；该 artifact 只构成 M2 原生门禁证据，不是 M3 candidate-set、公开 release、tag 或发布资产。
-- 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是 main ruleset 的六项 required checks，也非本工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
-- `WP-M3-LIVEGATE-SCHEMA` 已开始，因此 M3 为 `in_progress`；尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 live-gate runner、attestation 或 promotion workflow，临时 PR artifact 不得视为 candidate-set。M0 未完成前继续禁止新 release。
+- 既有 `.github/workflows/release.yml` push run `33259518906` 仍以零 job 即时失败；它不是 main ruleset 的六项 required checks，也非本工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
+- `WP-M3-LIVEGATE-SCHEMA` 已完成，下一工作包为 `WP-M3-LIVEGATE-RUNNER`，因此 M3 继续为 `in_progress`；尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 live-gate runner、attestation 或 promotion workflow，临时 PR artifact 不得视为 candidate-set。M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 
 ## 当前已知能力限制
