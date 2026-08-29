@@ -60,6 +60,14 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 - active main ruleset `main-v1-protection`（ID `21733128`）无 bypass，现要求 PR、签名提交、严格六检查并禁止删除和 force-push；active tag ruleset `v-tag-protection`（ID `21733211`）无 bypass，禁止 `refs/tags/v*` 更新和删除。规则读回后 `main` 与四个既有 tag SHA 均未漂移。
 - `WP-M0-RENAME-GOVERN` 与 `WP-BASELINE-VERIFY` 已完成。未对冻结提交或既有分支拓扑做追溯改写，也未使用 squash/rebase、force-push、release 或 tag 写操作。
 
+## 2026-08-29 配置迁移事务收敛核验
+
+- `WP-M2-CONFIG-CLOSE` 的 signed implementation commit `598850195a65167d121c2fc86477cf56676bb8df` 已补齐逐事务、无包级全局状态的 journal phase 失败注入，覆盖 `prepared`、`backups`、`keyring`、`config` 与 `marker_verified` 的自动回滚或已提交清理语义。
+- 两类合成旧来源现同时验证 backup 固定写入 `BaseDir/migration-backups/`、名称精确为 `<source-kind>-<transaction-id>-<ordinal>.backup` 且完整保留原字节；Windows 原生 runner 验证受保护当前用户 DACL，Ubuntu 与 macOS 原生 runner 验证目录 `0700`、文件 `0600`。
+- 合成 keyring backend 现覆盖“写入后返回错误”的补偿删除，以及补偿删除失败时 journal/backup 保留、错误脱敏和后续恢复重试；未调用真实系统 keyring 或接触真实凭据。
+- PR #3 首轮 CI run `33224027909` 的六项 required checks 全部成功；本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check`、`internal/config` 六目标测试编译、固定 gitleaks `8.30.1` 合成 canary/15 commits 历史/精确 source tree 扫描及 `git fsck --full` 均通过，临时工具、cache、构建与扫描目录已清理。
+- `WP-M2-CONFIG-CLOSE` 完成；M2 仍因 Unix/Windows 安装器与原生安装矩阵未完成而保持 `in_progress`，下一工作包为 `WP-M2-INSTALL-UNIX`。
+
 ## 2026-08-27 本地验收结果
 
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 均通过。
@@ -70,8 +78,9 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- 仓库治理与只读 baseline 已完成；下一工作包为 `WP-M2-CONFIG-CLOSE`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
+- 仓库治理、只读 baseline 与 `WP-M2-CONFIG-CLOSE` 已完成；下一工作包为 `WP-M2-INSTALL-UNIX`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
 - 尚未完成 Windows/Linux/macOS 的实际安装、升级、回滚 smoke test；macOS trusted `/var` 锚点已在原生 CI 实跑，Linux 的相同 no-follow opener 已通过 WSL 实跑，但各平台安装、完整权限与锁行为仍需对应实机验收。
+- 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是 main ruleset 的六项 required checks，也非本工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
 - 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 - 离线安装器尚未满足 [ADR-0008](../architecture/decisions/ADR-0008-offline-transactional-installer.md) 的 acquisition、路径/权限和完整 failpoint 门禁。

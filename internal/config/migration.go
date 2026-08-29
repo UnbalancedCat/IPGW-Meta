@@ -97,6 +97,17 @@ type MigrationApplyOptions struct {
 	ProviderOptions ProviderOptions
 }
 
+// migrationApplyTestHooks provides per-transaction failure injection without
+// package-global state, so race tests can exercise every persisted journal
+// phase deterministically. It is deliberately inaccessible outside config.
+type migrationApplyTestHooks struct {
+	failAfterJournalPhase func(migrationJournalPhase) bool
+}
+
+func (hooks *migrationApplyTestHooks) shouldFailAfterJournalPhase(phase migrationJournalPhase) bool {
+	return hooks != nil && hooks.failAfterJournalPhase != nil && hooks.failAfterJournalPhase(phase)
+}
+
 type migrationCandidate struct {
 	profile MigratedProfile
 	secret  []byte
@@ -394,6 +405,10 @@ func ApplyMigration(paths Paths, store *Store, destination Config, plan Migratio
 }
 
 func ApplyMigrationWithOptions(paths Paths, store *Store, destination Config, plan MigrationPlan, options MigrationApplyOptions) (MigrationResult, error) {
+	return applyMigrationWithTestHooks(paths, store, destination, plan, options, nil)
+}
+
+func applyMigrationWithTestHooks(paths Paths, store *Store, destination Config, plan MigrationPlan, options MigrationApplyOptions, testHooks *migrationApplyTestHooks) (MigrationResult, error) {
 	paths = normalizeMigrationPaths(paths)
 	if plan.state == nil || plan.state.closed {
 		return MigrationResult{}, fmt.Errorf("migration plan is closed")
@@ -430,7 +445,7 @@ func ApplyMigrationWithOptions(paths Paths, store *Store, destination Config, pl
 	var result MigrationResult
 	err := store.withMutationLock(func(locked *lockedStore) error {
 		var applyErr error
-		result, applyErr = applyMigrationLocked(paths, locked, destination, plan, options)
+		result, applyErr = applyMigrationLocked(paths, locked, destination, plan, options, testHooks)
 		return applyErr
 	})
 	if err != nil {
@@ -442,7 +457,7 @@ func ApplyMigrationWithOptions(paths Paths, store *Store, destination Config, pl
 // applyMigrationLocked owns the complete recovery, generation check and
 // transaction sequence. The caller must hold Store.withMutationLock and must
 // not call a lock-taking Store method from this function.
-func applyMigrationLocked(paths Paths, locked *lockedStore, destination Config, plan MigrationPlan, options MigrationApplyOptions) (MigrationResult, error) {
+func applyMigrationLocked(paths Paths, locked *lockedStore, destination Config, plan MigrationPlan, options MigrationApplyOptions, testHooks *migrationApplyTestHooks) (MigrationResult, error) {
 	if err := recoverPendingMigrationIfPresent(paths, options); err != nil {
 		return MigrationResult{}, err
 	}
@@ -588,6 +603,9 @@ func applyMigrationLocked(paths Paths, locked *lockedStore, destination Config, 
 		}
 		return MigrationResult{}, errors.New(message)
 	}
+	if testHooks.shouldFailAfterJournalPhase(migrationPhasePrepared) {
+		return fail("migration failed after preparing journal")
+	}
 
 	if err := writePreparedMigrationSnapshot(configBefore, configBeforeData); err != nil {
 		return fail("migration failed while saving config recovery state")
@@ -602,6 +620,9 @@ func applyMigrationLocked(paths Paths, locked *lockedStore, destination Config, 
 	}
 	if _, err := advanceMigrationJournal(paths.MigrationJournal, transactionID, migrationPhaseBackups); err != nil {
 		return fail("migration failed while committing backups")
+	}
+	if testHooks.shouldFailAfterJournalPhase(migrationPhaseBackups) {
+		return fail("migration failed after committing backups")
 	}
 	for _, profile := range keyringProfiles {
 		secret := plan.state.secrets[profile.Name]
@@ -623,6 +644,9 @@ func applyMigrationLocked(paths Paths, locked *lockedStore, destination Config, 
 	if _, err := advanceMigrationJournal(paths.MigrationJournal, transactionID, migrationPhaseKeyring); err != nil {
 		return fail("migration failed while committing credential decisions")
 	}
+	if testHooks.shouldFailAfterJournalPhase(migrationPhaseKeyring) {
+		return fail("migration failed after committing credential decisions")
+	}
 	if err := locked.replacePrepared(candidateData, false); err != nil {
 		return fail("migration failed while committing config")
 	}
@@ -634,6 +658,9 @@ func applyMigrationLocked(paths Paths, locked *lockedStore, destination Config, 
 	}
 	if _, err := advanceMigrationJournal(paths.MigrationJournal, transactionID, migrationPhaseConfig); err != nil {
 		return fail("migration failed while recording config commit")
+	}
+	if testHooks.shouldFailAfterJournalPhase(migrationPhaseConfig) {
+		return fail("migration failed after recording config commit")
 	}
 	if err := atomicWriteFile(paths.MigrationMarker, markerData, 0o600, false); err != nil {
 		return fail("migration failed while committing marker")
@@ -647,6 +674,9 @@ func applyMigrationLocked(paths Paths, locked *lockedStore, destination Config, 
 	}
 	if _, err := advanceMigrationJournal(paths.MigrationJournal, transactionID, migrationPhaseMarkerVerified); err != nil {
 		return fail("migration failed while recording marker verification")
+	}
+	if testHooks.shouldFailAfterJournalPhase(migrationPhaseMarkerVerified) {
+		return fail("migration committed but cleanup requires recovery")
 	}
 	if err := completeMigrationJournal(paths.MigrationJournal, transactionID); err != nil {
 		return fail("migration committed but cleanup requires recovery")

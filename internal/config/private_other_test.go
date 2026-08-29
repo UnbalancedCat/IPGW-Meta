@@ -42,3 +42,8 @@ func assertUnixMode(t *testing.T, path string, want os.FileMode) {
 		t.Fatalf("mode for %q = %#o, want %#o", filepath.Base(path), got, want)
 	}
 }
+
+func assertPrivateMigrationDirectory(t *testing.T, path string) {
+	t.Helper()
+	assertUnixMode(t, path, 0o700)
+}
