@@ -674,12 +674,12 @@ func (r commandRuntime) confirmMigration(reader *bufio.Reader) (bool, error) {
 }
 
 func (r commandRuntime) printMetaHelp() {
-	_, _ = fmt.Fprintln(r.render.out, "Usage: ipgw-meta [--output human|json] [--profile NAME] [--bind-ip IP] <status|login|logout|network|profile>")
+	_, _ = fmt.Fprintln(r.render.out, "Usage: ipgw-meta [--output human|json] [--profile NAME] [--bind-ip IP] [--version] <status|login|logout|network|profile>")
 	_, _ = fmt.Fprintln(r.render.out, "  login [--method password|qr] [--switch]")
 	_, _ = fmt.Fprintln(r.render.out, "  network <list|scan>")
 	_, _ = fmt.Fprintln(r.render.out, "  profile <list|show|add|update|remove|migrate>")
 }
 
 func (r commandRuntime) printLegacyHelp() {
-	_, _ = fmt.Fprintln(r.render.out, "Usage: ipgw-legacy <login|logout|test|info|config>; no arguments performs legacy login")
+	_, _ = fmt.Fprintln(r.render.out, "Usage: ipgw-legacy [--version] <login|logout|test|info|config>; no arguments performs legacy login")
 }

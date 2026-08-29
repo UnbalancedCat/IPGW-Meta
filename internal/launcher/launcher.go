@@ -31,6 +31,7 @@ const (
 type Options struct {
 	Args           []string
 	InstallDefault string
+	Version        string
 	Stdin          io.Reader
 	Stdout         io.Writer
 	Stderr         io.Writer
@@ -69,6 +70,13 @@ type modeResolution struct {
 // contains no gateway, credential, profile, or protocol logic.
 func Execute(options Options) int {
 	options = withDefaults(options)
+	versionRequest, versionFailure := parseVersionRequest(options.Args)
+	if versionRequest.requested {
+		if versionFailure != nil {
+			return renderFailure(versionRequest.failureJSON, options.Stdout, options.Stderr, versionFailure.kind)
+		}
+		return renderVersion(versionRequest.jsonOutput, options.Version, options.Stdout, options.Stderr)
+	}
 	jsonOutput := preparseJSON(options.Args)
 
 	resolution, failure := resolveMode(options)
@@ -90,6 +98,119 @@ func Execute(options Options) int {
 	return exitCode
 }
 
+type versionRequest struct {
+	requested   bool
+	jsonOutput  bool
+	failureJSON bool
+}
+
+// parseVersionRequest recognizes the side-effect-free global version path
+// without consulting launcher environment, configuration, or sibling files.
+// The normal child CLI remains authoritative for all non-version invocations.
+func parseVersionRequest(args []string) (versionRequest, *launcherFailure) {
+	request := versionRequest{failureJSON: preparseJSON(args)}
+	for _, argument := range args {
+		if argument == "--" {
+			break
+		}
+		name, _, _ := splitLauncherLongFlag(argument)
+		if name == "--version" {
+			request.requested = true
+			break
+		}
+	}
+	if !request.requested {
+		return request, nil
+	}
+
+	outputSeen := false
+	modeSeen := false
+	versionSeen := false
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		if argument == "--" {
+			if index+1 != len(args) {
+				return request, &launcherFailure{kind: failureInvalidArguments}
+			}
+			break
+		}
+		name, value, inline := splitLauncherLongFlag(argument)
+		switch name {
+		case "--version":
+			if inline || versionSeen {
+				return request, &launcherFailure{kind: failureInvalidArguments}
+			}
+			versionSeen = true
+		case "--json":
+			if inline || outputSeen {
+				return request, &launcherFailure{kind: failureInvalidArguments}
+			}
+			outputSeen = true
+			request.jsonOutput = true
+		case "--output", "--mode", "--config", "--profile", "--bind-ip":
+			if !inline {
+				if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
+					return request, &launcherFailure{kind: failureInvalidArguments}
+				}
+				index++
+				value = args[index]
+			}
+			if isLauncherPasswordArgument(value) {
+				return request, &launcherFailure{kind: failureInvalidArguments}
+			}
+			switch name {
+			case "--output":
+				if outputSeen || (value != "human" && value != "json") {
+					return request, &launcherFailure{kind: failureInvalidArguments}
+				}
+				outputSeen = true
+				request.jsonOutput = value == "json"
+			case "--mode":
+				if modeSeen {
+					return request, &launcherFailure{kind: failureInvalidArguments}
+				}
+				if _, valid := parseMode(value); !valid {
+					return request, &launcherFailure{kind: failureInvalidArguments}
+				}
+				modeSeen = true
+			}
+		default:
+			return request, &launcherFailure{kind: failureInvalidArguments}
+		}
+	}
+	return request, nil
+}
+
+func isLauncherPasswordArgument(argument string) bool {
+	return argument == "--password" || strings.HasPrefix(argument, "--password=") ||
+		argument == "-p" || (strings.HasPrefix(argument, "-p") && len(argument) > 2)
+}
+
+func splitLauncherLongFlag(argument string) (name, value string, inline bool) {
+	if split := strings.IndexByte(argument, '='); strings.HasPrefix(argument, "--") && split > 2 {
+		return argument[:split], argument[split+1:], true
+	}
+	return argument, "", false
+}
+
+func renderVersion(jsonOutput bool, version string, stdout, stderr io.Writer) int {
+	if !jsonOutput {
+		_, _ = fmt.Fprintf(stdout, "IPGW-Meta %s\n", version)
+		return 0
+	}
+	value := struct {
+		SchemaVersion int               `json:"schema_version"`
+		Command       string            `json:"command"`
+		OK            bool              `json:"ok"`
+		Data          map[string]string `json:"data"`
+	}{SchemaVersion: 1, Command: "version", OK: true, Data: map[string]string{"version": version}}
+	if err := json.NewEncoder(stdout).Encode(value); err != nil {
+		_, _ = fmt.Fprintln(stderr, "Error: unable to write JSON output")
+		return 1
+	}
+	return 0
+}
+
 func withDefaults(options Options) Options {
 	if options.Stdin == nil {
 		options.Stdin = strings.NewReader("")
@@ -99,6 +220,9 @@ func withDefaults(options Options) Options {
 	}
 	if options.Stderr == nil {
 		options.Stderr = io.Discard
+	}
+	if options.Version == "" {
+		options.Version = "dev"
 	}
 	if options.lookupEnv == nil {
 		options.lookupEnv = os.LookupEnv

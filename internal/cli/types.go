@@ -30,6 +30,7 @@ type Options struct {
 	Mode            Mode
 	Args            []string
 	Paths           config.Paths
+	ResolvePaths    func() (config.Paths, error)
 	NewGateway      GatewayFactory
 	Input           *os.File
 	Out             io.Writer
@@ -44,6 +45,7 @@ type globalOptions struct {
 	configPath string
 	profile    string
 	bindIP     string
+	version    bool
 }
 
 type outputMode string

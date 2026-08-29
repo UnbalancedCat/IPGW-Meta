@@ -44,6 +44,7 @@ ipgw-meta
 | `--profile NAME` | 选择 named profile；省略时使用默认 profile |
 | `--bind-ip IPv4` | 为本次请求覆盖出站 IPv4 |
 | `--config PATH` | 覆盖 profile 配置路径；相关 marker、journal、protocol cache 与 migration backup 以该文件父目录为 BaseDir |
+| `--version` | 三个入口输出同一构建版本并退出；人类输出固定为 `IPGW-Meta VERSION`，JSON 沿用单 envelope 契约；不得读取 profile、凭据或网络 |
 
 ## CLI-AUTH-001：登录与账号切换
 

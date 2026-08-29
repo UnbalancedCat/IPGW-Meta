@@ -14,6 +14,79 @@ import (
 
 const launcherCanary = "LAUNCHER-CANARY-MUST-NOT-LEAK"
 
+func TestVersionBypassesModeResolutionAndChild(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		json bool
+	}{
+		{name: "human", args: []string{"--version"}},
+		{name: "human with globals", args: []string{"--output=human", "--mode", "legacy", "--profile", "ignored", "--version", "--"}},
+		{name: "json with globals", args: []string{"--json", "--config", "ignored.yaml", "--version"}, json: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			exit := Execute(Options{
+				Args: test.args, InstallDefault: "invalid-on-purpose", Version: "test-v1",
+				Stdout: &stdout, Stderr: &stderr,
+				lookupEnv: func(string) (string, bool) {
+					t.Fatal("--version must not read mode environment")
+					return "", false
+				},
+				userConfigDir: func() (string, error) {
+					t.Fatal("--version must not read launcher config")
+					return "", nil
+				},
+				executable: func() (string, error) {
+					t.Fatal("--version must not resolve a sibling executable")
+					return "", nil
+				},
+				runChild: func(string, []string, io.Reader, io.Writer, io.Writer) (int, error) {
+					t.Fatal("--version must not start a child")
+					return 0, nil
+				},
+			})
+			if exit != 0 || stderr.Len() != 0 {
+				t.Fatalf("exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+			}
+			if !test.json {
+				if stdout.String() != "IPGW-Meta test-v1\n" {
+					t.Fatalf("stdout=%q", stdout.String())
+				}
+				return
+			}
+			var envelope struct {
+				Command string            `json:"command"`
+				OK      bool              `json:"ok"`
+				Data    map[string]string `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope.Command != "version" || !envelope.OK || envelope.Data["version"] != "test-v1" {
+				t.Fatalf("version envelope=%#v err=%v", envelope, err)
+			}
+		})
+	}
+}
+
+func TestVersionParserHonorsTerminatorAndRejectsTrailingArguments(t *testing.T) {
+	request, failure := parseVersionRequest([]string{"--", "--version"})
+	if request.requested || failure != nil {
+		t.Fatalf("version after terminator: request=%#v failure=%#v", request, failure)
+	}
+	request, failure = parseVersionRequest([]string{"--version", "--", "status"})
+	if !request.requested || failure == nil || failure.kind != failureInvalidArguments {
+		t.Fatalf("trailing positional: request=%#v failure=%#v", request, failure)
+	}
+	request, failure = parseVersionRequest([]string{"--output", "human", "--json", "--version"})
+	if !request.requested || !request.failureJSON || failure == nil || failure.kind != failureInvalidArguments {
+		t.Fatalf("duplicate output mode: request=%#v failure=%#v", request, failure)
+	}
+	request, failure = parseVersionRequest([]string{"--profile", "-pSECRET", "--version"})
+	if !request.requested || failure == nil || failure.kind != failureInvalidArguments {
+		t.Fatalf("password-shaped value: request=%#v failure=%#v", request, failure)
+	}
+}
+
 func TestModeResolutionPriority(t *testing.T) {
 	t.Run("explicit skips environment and config", func(t *testing.T) {
 		envCalls := 0

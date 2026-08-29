@@ -334,6 +334,101 @@ func TestModernTreeRejectsRemovedCommandsWithoutSideEffects(t *testing.T) {
 	}
 }
 
+func TestVersionFlagIsSideEffectFreeForBothModes(t *testing.T) {
+	for _, mode := range []Mode{ModeMeta, ModeLegacy} {
+		t.Run(string(mode)+" human", func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			exit := Execute(context.Background(), Options{
+				Mode:    mode,
+				Args:    []string{"--version"},
+				Version: "test-v1",
+				ResolvePaths: func() (config.Paths, error) {
+					t.Fatal("--version must not resolve configuration paths")
+					return config.Paths{}, nil
+				},
+				NewGateway: func(config.Paths) Gateway {
+					t.Fatal("--version must not create a gateway")
+					return nil
+				},
+				Out: &stdout,
+				Err: &stderr,
+			})
+			if exit != 0 || stdout.String() != "IPGW-Meta test-v1\n" || stderr.Len() != 0 {
+				t.Fatalf("exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+			}
+		})
+
+		t.Run(string(mode)+" json", func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			exit := Execute(context.Background(), Options{
+				Mode:    mode,
+				Args:    []string{"--json", "--version"},
+				Version: "test-v1",
+				ResolvePaths: func() (config.Paths, error) {
+					t.Fatal("JSON --version must not resolve configuration paths")
+					return config.Paths{}, nil
+				},
+				NewGateway: func(config.Paths) Gateway {
+					t.Fatal("JSON --version must not create a gateway")
+					return nil
+				},
+				Out: &stdout,
+				Err: &stderr,
+			})
+			if exit != 0 || stderr.Len() != 0 {
+				t.Fatalf("exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+			}
+			var envelope map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode version envelope: %v", err)
+			}
+			if envelope["command"] != "version" || envelope["ok"] != true {
+				t.Fatalf("unexpected version envelope: %#v", envelope)
+			}
+			data := objectField(t, envelope, "data")
+			if data["version"] != "test-v1" {
+				t.Fatalf("version data = %#v", data)
+			}
+		})
+	}
+}
+
+func TestVersionFlagHonorsTerminatorAndRejectsPositionals(t *testing.T) {
+	t.Run("terminator", func(t *testing.T) {
+		gateway := &recordingGateway{}
+		var stdout, stderr bytes.Buffer
+		exit := Execute(context.Background(), Options{
+			Mode: ModeMeta, Args: []string{"--", "--version"}, Version: "test-v1",
+			NewGateway: func(config.Paths) Gateway { return gateway }, Out: &stdout, Err: &stderr,
+		})
+		if exit != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "invalid arguments") {
+			t.Fatalf("exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+		}
+		if gateway.totalCalls() != 0 {
+			t.Fatalf("terminator case called gateway %d time(s)", gateway.totalCalls())
+		}
+	})
+
+	t.Run("positional", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		exit := Execute(context.Background(), Options{
+			Mode: ModeMeta, Args: []string{"status", "--version"}, Version: "test-v1",
+			ResolvePaths: func() (config.Paths, error) {
+				t.Fatal("invalid --version request must not resolve configuration paths")
+				return config.Paths{}, nil
+			},
+			NewGateway: func(config.Paths) Gateway {
+				t.Fatal("invalid --version request must not create a gateway")
+				return nil
+			},
+			Out: &stdout, Err: &stderr,
+		})
+		if exit != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "invalid arguments") {
+			t.Fatalf("exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+		}
+	})
+}
+
 func TestModernHelpShowsOnlyFixedTree(t *testing.T) {
 	gateway := &recordingGateway{}
 	var stdout, stderr bytes.Buffer
@@ -348,6 +443,7 @@ func TestModernHelpShowsOnlyFixedTree(t *testing.T) {
 		t.Fatalf("exit = %d; stderr=%q", exit, stderr.String())
 	}
 	for _, expected := range []string{
+		"[--version]",
 		"<status|login|logout|network|profile>",
 		"login [--method password|qr] [--switch]",
 		"network <list|scan>",
@@ -357,7 +453,7 @@ func TestModernHelpShowsOnlyFixedTree(t *testing.T) {
 			t.Errorf("help missing %q:\n%s", expected, stdout.String())
 		}
 	}
-	for _, removed := range []string{"profile <list|show|add|update", "profile <list|show|add|set", "profile use", "<status|login|logout|network|profile|migrate>", "version"} {
+	for _, removed := range []string{"profile <list|show|add|update", "profile <list|show|add|set", "profile use", "<status|login|logout|network|profile|migrate>"} {
 		if strings.Contains(stdout.String(), removed) {
 			t.Errorf("help still contains removed path %q:\n%s", removed, stdout.String())
 		}

@@ -32,6 +32,7 @@ type windowsFixture struct {
 	localAppData string
 	install      string
 	bin          string
+	tempDir      string
 	tokenFile    string
 }
 
@@ -51,9 +52,10 @@ func newWindowsFixture(t *testing.T) *windowsFixture {
 		localAppData: filepath.Join(root, "localappdata"),
 		install:      filepath.Join(root, "install"),
 		bin:          filepath.Join(root, "bin"),
+		tempDir:      filepath.Join(root, "tmp"),
 		tokenFile:    filepath.Join(root, ".ipgw-install-test-token"),
 	}
-	for _, dir := range []string{f.home, f.appData, f.localAppData} {
+	for _, dir := range []string{f.home, f.appData, f.localAppData, f.tempDir} {
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatalf("create fixture directory %s: %v", dir, err)
 		}
@@ -85,25 +87,16 @@ func findWindowsRepoRoot(t *testing.T) string {
 }
 
 func (f *windowsFixture) environment(overrides map[string]string) []string {
-	dropped := map[string]bool{
-		"APPDATA":                              true,
-		"HOME":                                 true,
-		"LOCALAPPDATA":                         true,
-		"PSMODULEPATH":                         true,
-		"USERPROFILE":                          true,
-		"IPGW_VERSION":                         true,
-		"IPGW_INSTALL_ROOT":                    true,
-		"IPGW_BIN_DIR":                         true,
-		"IPGW_INSTALL_TEST_ROOT":               true,
-		"IPGW_INSTALL_TEST_TOKEN":              true,
-		"IPGW_INSTALL_TEST_FAILPOINT":          true,
-		"IPGW_INSTALL_TEST_ROLLBACK_FAILPOINT": true,
-	}
-	env := make([]string, 0, len(os.Environ())+10)
-	for _, item := range os.Environ() {
-		name, _, _ := strings.Cut(item, "=")
-		if !dropped[strings.ToUpper(name)] {
-			env = append(env, item)
+	env := make([]string, 0, 25)
+	// GitHub's Windows images prewarm this cache so each short-lived Windows
+	// PowerShell process does not pay the module-analysis cold-start penalty.
+	for _, name := range []string{
+		"COMSPEC", "OS", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "PSModuleAnalysisCachePath",
+		"PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432",
+		"SYSTEMDRIVE", "SYSTEMROOT", "WINDIR",
+	} {
+		if value, ok := os.LookupEnv(name); ok && value != "" {
+			env = append(env, name+"="+value)
 		}
 	}
 	values := map[string]string{
@@ -111,18 +104,20 @@ func (f *windowsFixture) environment(overrides map[string]string) []string {
 		"HOME":                    f.home,
 		"LOCALAPPDATA":            f.localAppData,
 		"USERPROFILE":             f.home,
+		"TEMP":                    f.tempDir,
+		"TMP":                     f.tempDir,
 		"IPGW_INSTALL_TEST_ROOT":  f.root,
 		"IPGW_INSTALL_TEST_TOKEN": windowsTestToken,
 		"HTTPS_PROXY":             "http://127.0.0.1:1",
 		"HTTP_PROXY":              "http://127.0.0.1:1",
+		"ALL_PROXY":               "http://127.0.0.1:1",
+		"NO_PROXY":                "",
 	}
 	for name, value := range overrides {
 		values[name] = value
 	}
 	for name, value := range values {
-		if value != "" {
-			env = append(env, name+"="+value)
-		}
+		env = append(env, name+"="+value)
 	}
 	return env
 }
@@ -190,7 +185,7 @@ import (
 var version string
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Println(version)
+		fmt.Println("IPGW-Meta", version)
 		return
 	}
 	fmt.Println("synthetic ipgw installer entry")
@@ -306,6 +301,156 @@ func hashWindowsBytes(value []byte) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
+func windowsUpgradeBundle(t *testing.T, f *windowsFixture, fallbackVersion string) windowsTestBundle {
+	t.Helper()
+	if !nativeInstallArtifactConfigured() {
+		return buildWindowsBundle(t, f.root, fallbackVersion, "", "")
+	}
+	asset := prepareNativeInstallAsset(t, f.root)
+	f.script = asset.installerPath
+	return windowsTestBundle{path: asset.bundlePath, sha256: asset.bundleSHA256, version: asset.version}
+}
+
+func windowsRejectionBundle(t *testing.T, f *windowsFixture, extraName, linkName string) windowsTestBundle {
+	t.Helper()
+	version := "v1.0.0"
+	if nativeInstallArtifactConfigured() {
+		asset := prepareNativeInstallAsset(t, f.root)
+		f.script = asset.installerPath
+		version = asset.version
+	}
+	return buildWindowsBundle(t, f.root, version, extraName, linkName)
+}
+
+func windowsPinnedInstallerVersion(t *testing.T, f *windowsFixture) string {
+	t.Helper()
+	if !nativeInstallArtifactConfigured() {
+		return "v1.0.0"
+	}
+	asset := prepareNativeInstallAsset(t, f.root)
+	f.script = asset.installerPath
+	return asset.version
+}
+
+func writeWindowsLegacyLauncherSentinel(t *testing.T, f *windowsFixture) []byte {
+	t.Helper()
+	path := filepath.Join(f.appData, "ipgw-meta", "launcher.yaml")
+	content := []byte("schema_version: 1\nmode: legacy\ncohort: native-preserve-test\n")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write non-default launcher sentinel: %v", err)
+	}
+	assertPrivateWindowsACL(t, path, false)
+	return mustReadWindowsFile(t, path)
+}
+
+func windowsVersionEntries(t *testing.T, f *windowsFixture) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(f.install, "versions"))
+	if err != nil {
+		t.Fatalf("read installed version entries: %v", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
+}
+
+func assertWindowsVersionEntries(t *testing.T, f *windowsFixture, want []string) {
+	t.Helper()
+	got := windowsVersionEntries(t, f)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("installed version entries changed across rollback: got %v, want %v", got, want)
+	}
+}
+
+func TestNativeReleaseAssetSmoke(t *testing.T) {
+	if !nativeInstallArtifactConfigured() {
+		if nativeInstallArtifactRequired() {
+			t.Fatal("native install artifact is required but not configured")
+		}
+		t.Skip("native install artifact is not configured")
+	}
+
+	t.Run("fresh install and launcher default", func(t *testing.T) {
+		f := newWindowsFixture(t)
+		asset := prepareNativeInstallAsset(t, f.root)
+		t.Log(nativeAssetDescription(asset))
+		f.script = asset.installerPath
+		candidate := windowsTestBundle{path: asset.bundlePath, sha256: asset.bundleSHA256, version: asset.version}
+		if output, err := f.installBundle(t, candidate, "", ""); err != nil {
+			t.Fatalf("fresh native release-asset install failed: %v\n%s", err, output)
+		}
+		assertWindowsInstalledVersion(t, f, candidate.version)
+		assertWindowsActiveVersion(t, f, candidate.version)
+		assertWindowsPrivateLayout(t, f)
+		launcher := mustReadWindowsFile(t, filepath.Join(f.appData, "ipgw-meta", "launcher.yaml"))
+		assertFreshLauncherState(t, launcher)
+		pathState := strings.TrimSpace(string(mustReadWindowsFile(t, filepath.Join(f.root, ".ipgw-user-path"))))
+		if !strings.EqualFold(pathState, f.bin) {
+			t.Fatalf("native release-asset test PATH state is %q, want %q", pathState, f.bin)
+		}
+		assertNoWindowsTransactionArtifacts(t, f)
+	})
+
+	t.Run("upgrade preserves launcher", func(t *testing.T) {
+		f := newWindowsFixture(t)
+		baseline := buildWindowsBundle(t, f.root, "native-baseline", "", "")
+		if output, err := f.installBundle(t, baseline, "", ""); err != nil {
+			t.Fatalf("prepare native upgrade baseline: %v\n%s", err, output)
+		}
+		oldActive := resolvedWindowsActive(t, f)
+		launcherPath := filepath.Join(f.appData, "ipgw-meta", "launcher.yaml")
+		launcherBefore := writeWindowsLegacyLauncherSentinel(t, f)
+		candidate := windowsUpgradeBundle(t, f, "unused")
+		if candidate.version == baseline.version {
+			t.Fatal("native candidate version must differ from the upgrade baseline")
+		}
+		if output, err := f.installBundle(t, candidate, "", ""); err != nil {
+			t.Fatalf("native release-asset upgrade failed: %v\n%s", err, output)
+		}
+		assertWindowsInstalledVersion(t, f, candidate.version)
+		assertWindowsActiveVersion(t, f, candidate.version)
+		if active := resolvedWindowsActive(t, f); strings.EqualFold(active, oldActive) {
+			t.Fatal("native release-asset upgrade did not switch active atomically")
+		}
+		launcherAfter := mustReadWindowsFile(t, launcherPath)
+		if string(launcherAfter) != string(launcherBefore) {
+			t.Fatal("native release-asset upgrade changed launcher selection")
+		}
+		assertNoWindowsTransactionArtifacts(t, f)
+	})
+
+	t.Run("basic rollback restores baseline", func(t *testing.T) {
+		f := newWindowsFixture(t)
+		baseline := buildWindowsBundle(t, f.root, "native-baseline", "", "")
+		if output, err := f.installBundle(t, baseline, "", ""); err != nil {
+			t.Fatalf("prepare native rollback baseline: %v\n%s", err, output)
+		}
+		oldActive := resolvedWindowsActive(t, f)
+		oldLauncher := writeWindowsLegacyLauncherSentinel(t, f)
+		oldVersions := windowsVersionEntries(t, f)
+		candidate := windowsUpgradeBundle(t, f, "unused")
+		output, err := f.installBundle(t, candidate, "before_commit", "")
+		if err == nil {
+			t.Fatalf("native release-asset rollback probe unexpectedly committed:\n%s", output)
+		}
+		if !strings.Contains(output, "installer test failpoint triggered: before_commit") {
+			t.Fatalf("native rollback did not reach before_commit failpoint:\n%s", output)
+		}
+		assertWindowsInstalledVersion(t, f, baseline.version)
+		assertWindowsActiveVersion(t, f, baseline.version)
+		if active := resolvedWindowsActive(t, f); !strings.EqualFold(active, oldActive) {
+			t.Fatal("native release-asset rollback did not restore active")
+		}
+		if launcher := mustReadWindowsFile(t, filepath.Join(f.appData, "ipgw-meta", "launcher.yaml")); string(launcher) != string(oldLauncher) {
+			t.Fatal("native release-asset rollback changed launcher selection")
+		}
+		assertWindowsVersionEntries(t, f, oldVersions)
+		assertNoWindowsTransactionArtifacts(t, f)
+	})
+}
+
 func TestWindowsOfflineFreshInstallAndUpgrade(t *testing.T) {
 	f := newWindowsFixture(t)
 	v1 := buildWindowsBundle(t, f.root, "v1.0.0", "", "")
@@ -316,10 +461,9 @@ func TestWindowsOfflineFreshInstallAndUpgrade(t *testing.T) {
 	assertWindowsActiveVersion(t, f, v1.version)
 	assertWindowsPrivateLayout(t, f)
 	launcherPath := filepath.Join(f.appData, "ipgw-meta", "launcher.yaml")
-	launcherBefore := mustReadWindowsFile(t, launcherPath)
-	if !strings.Contains(string(launcherBefore), "mode: meta\ncohort: new-install\n") {
-		t.Fatalf("fresh launcher does not use the specified default:\n%s", launcherBefore)
-	}
+	launcherDefault := mustReadWindowsFile(t, launcherPath)
+	assertFreshLauncherState(t, launcherDefault)
+	launcherBefore := writeWindowsLegacyLauncherSentinel(t, f)
 	pathState := strings.TrimSpace(string(mustReadWindowsFile(t, filepath.Join(f.root, ".ipgw-user-path"))))
 	if !strings.EqualFold(pathState, f.bin) {
 		t.Fatalf("test PATH state is %q, want %q", pathState, f.bin)
@@ -327,7 +471,7 @@ func TestWindowsOfflineFreshInstallAndUpgrade(t *testing.T) {
 	assertNoWindowsTransactionArtifacts(t, f)
 
 	oldActive := resolvedWindowsActive(t, f)
-	v2 := buildWindowsBundle(t, f.root, "v1.1.0", "", "")
+	v2 := windowsUpgradeBundle(t, f, "v1.1.0")
 	if output, err := f.installBundle(t, v2, "", ""); err != nil {
 		t.Fatalf("offline upgrade failed: %v\n%s", err, output)
 	}
@@ -363,10 +507,20 @@ func TestWindowsForwardFailpointsRestorePreviousInstall(t *testing.T) {
 				t.Fatalf("prepare previous install: %v\n%s", err, output)
 			}
 			oldActive := resolvedWindowsActive(t, f)
-			oldLauncher := mustReadWindowsFile(t, filepath.Join(f.appData, "ipgw-meta", "launcher.yaml"))
-			v2 := buildWindowsBundle(t, f.root, "v1.1.0", "", "")
-			if output, err := f.installBundle(t, v2, point, ""); err == nil {
+			oldLauncher := writeWindowsLegacyLauncherSentinel(t, f)
+			oldVersions := windowsVersionEntries(t, f)
+			pathFile := filepath.Join(f.root, ".ipgw-user-path")
+			oldPath := []byte(filepath.Join(f.root, "existing-bin"))
+			if err := os.WriteFile(pathFile, oldPath, 0o600); err != nil {
+				t.Fatalf("write previous test PATH state: %v", err)
+			}
+			v2 := windowsUpgradeBundle(t, f, "v1.1.0")
+			output, err := f.installBundle(t, v2, point, "")
+			if err == nil {
 				t.Fatalf("failpoint %s unexpectedly committed:\n%s", point, output)
+			}
+			if !strings.Contains(output, "installer test failpoint triggered: "+point) {
+				t.Fatalf("installer did not reach failpoint %s:\n%s", point, output)
 			}
 			if active := resolvedWindowsActive(t, f); !strings.EqualFold(active, oldActive) {
 				t.Fatalf("failpoint %s did not restore the previous active junction", point)
@@ -375,6 +529,10 @@ func TestWindowsForwardFailpointsRestorePreviousInstall(t *testing.T) {
 				t.Fatalf("failpoint %s changed the launcher selection", point)
 			}
 			assertWindowsInstalledVersion(t, f, v1.version)
+			assertWindowsVersionEntries(t, f, oldVersions)
+			if restoredPath := mustReadWindowsFile(t, pathFile); string(restoredPath) != string(oldPath) {
+				t.Fatalf("failpoint %s did not restore test PATH state: got %q, want %q", point, restoredPath, oldPath)
+			}
 			assertNoWindowsTransactionArtifacts(t, f)
 		})
 	}
@@ -382,13 +540,13 @@ func TestWindowsForwardFailpointsRestorePreviousInstall(t *testing.T) {
 
 func TestWindowsRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 	tests := []struct {
-		point         string
-		entryVersion  string
-		activeVersion string
+		point           string
+		expectNewEntry  bool
+		expectNewActive bool
 	}{
-		{point: "before_restore_entry_1", entryVersion: "v1.1.0", activeVersion: "v1.1.0"},
-		{point: "before_restore_active", entryVersion: "v1.0.0", activeVersion: "v1.1.0"},
-		{point: "before_remove_new_version", entryVersion: "v1.0.0", activeVersion: "v1.0.0"},
+		{point: "before_restore_entry_1", expectNewEntry: true, expectNewActive: true},
+		{point: "before_restore_active", expectNewEntry: false, expectNewActive: true},
+		{point: "before_remove_new_version", expectNewEntry: false, expectNewActive: false},
 	}
 	for _, test := range tests {
 		t.Run(test.point, func(t *testing.T) {
@@ -397,7 +555,7 @@ func TestWindowsRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 			if output, err := f.installBundle(t, v1, "", ""); err != nil {
 				t.Fatalf("prepare previous install: %v\n%s", err, output)
 			}
-			v2 := buildWindowsBundle(t, f.root, "v1.1.0", "", "")
+			v2 := windowsUpgradeBundle(t, f, "v1.1.0")
 			output, err := f.installBundle(t, v2, "before_commit", test.point)
 			if err == nil {
 				t.Fatalf("rollback failpoint %s unexpectedly committed:\n%s", test.point, output)
@@ -405,8 +563,20 @@ func TestWindowsRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 			if !strings.Contains(strings.ToLower(output), "recovery materials remain") {
 				t.Fatalf("rollback failpoint did not report preserved recovery materials:\n%s", output)
 			}
-			assertWindowsInstalledVersion(t, f, test.entryVersion)
-			assertWindowsActiveVersion(t, f, test.activeVersion)
+			if !strings.Contains(output, "installer test failpoint triggered: before_commit") ||
+				!strings.Contains(output, "installer rollback failpoint triggered: "+test.point) {
+				t.Fatalf("installer did not reach the requested forward and rollback failpoints:\n%s", output)
+			}
+			entryVersion := v1.version
+			if test.expectNewEntry {
+				entryVersion = v2.version
+			}
+			activeVersion := v1.version
+			if test.expectNewActive {
+				activeVersion = v2.version
+			}
+			assertWindowsInstalledVersion(t, f, entryVersion)
+			assertWindowsActiveVersion(t, f, activeVersion)
 			assertWindowsRecoveryArtifacts(t, f)
 		})
 	}
@@ -415,7 +585,7 @@ func TestWindowsRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 	t.Run("missing checksum has no target side effects", func(t *testing.T) {
 		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "", "")
+		bundle := windowsRejectionBundle(t, f, "", "")
 		output, err := f.run(t, []string{
 			"-BundlePath", bundle.path,
 			"-Version", bundle.version,
@@ -430,7 +600,7 @@ func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 
 	t.Run("wrong outer checksum", func(t *testing.T) {
 		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "", "")
+		bundle := windowsRejectionBundle(t, f, "", "")
 		bundle.sha256 = strings.Repeat("0", 64)
 		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
 			t.Fatalf("wrong outer checksum unexpectedly succeeded:\n%s", output)
@@ -438,22 +608,33 @@ func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 		assertWindowsTargetsAbsent(t, f)
 	})
 
-	t.Run("Everyone writable source", func(t *testing.T) {
-		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "", "")
-		grantEveryoneWrite(t, bundle.path)
-		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
-			t.Fatalf("Everyone-writable source unexpectedly succeeded:\n%s", output)
-		}
-		assertWindowsTargetsAbsent(t, f)
-	})
+	for _, principal := range []struct {
+		name string
+		sid  string
+	}{
+		{name: "Users writable source", sid: "S-1-5-32-545"},
+		{name: "Authenticated Users writable source", sid: "S-1-5-11"},
+		{name: "Everyone writable source", sid: "S-1-1-0"},
+	} {
+		principal := principal
+		t.Run(principal.name, func(t *testing.T) {
+			f := newWindowsFixture(t)
+			bundle := windowsRejectionBundle(t, f, "", "")
+			grantPrincipalWrite(t, bundle.path, principal.sid)
+			if output, err := f.installBundle(t, bundle, "", ""); err == nil {
+				t.Fatalf("%s unexpectedly succeeded:\n%s", principal.name, output)
+			}
+			assertWindowsTargetsAbsent(t, f)
+		})
+	}
 
 	t.Run("UNC source", func(t *testing.T) {
 		f := newWindowsFixture(t)
+		version := windowsPinnedInstallerVersion(t, f)
 		output, err := f.run(t, []string{
 			"-BundlePath", `\\localhost\C$\not-present.zip`,
 			"-BundleSha256", strings.Repeat("0", 64),
-			"-Version", "v1.0.0",
+			"-Version", version,
 			"-InstallRoot", f.install,
 			"-BinDir", f.bin,
 		}, nil)
@@ -463,9 +644,29 @@ func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 		assertWindowsTargetsAbsent(t, f)
 	})
 
+	t.Run("junction source ancestor", func(t *testing.T) {
+		f := newWindowsFixture(t)
+		bundle := windowsRejectionBundle(t, f, "", "")
+		realParent := filepath.Join(f.root, "source-real")
+		if err := os.Mkdir(realParent, 0o700); err != nil {
+			t.Fatalf("create real source directory: %v", err)
+		}
+		realBundle := filepath.Join(realParent, filepath.Base(bundle.path))
+		if err := os.Rename(bundle.path, realBundle); err != nil {
+			t.Fatalf("move source behind junction: %v", err)
+		}
+		linkParent := filepath.Join(f.root, "source-link")
+		createJunction(t, linkParent, realParent)
+		bundle.path = filepath.Join(linkParent, filepath.Base(realBundle))
+		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
+			t.Fatalf("junction source ancestor unexpectedly succeeded:\n%s", output)
+		}
+		assertWindowsTargetsAbsent(t, f)
+	})
+
 	t.Run("overlapping targets", func(t *testing.T) {
 		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "", "")
+		bundle := windowsRejectionBundle(t, f, "", "")
 		overlapBin := filepath.Join(f.install, "bin")
 		output, err := f.run(t, []string{
 			"-BundlePath", bundle.path,
@@ -482,7 +683,7 @@ func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 
 	t.Run("junction target ancestor", func(t *testing.T) {
 		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "", "")
+		bundle := windowsRejectionBundle(t, f, "", "")
 		realParent := filepath.Join(f.root, "redirect")
 		if err := os.Mkdir(realParent, 0o700); err != nil {
 			t.Fatalf("create redirect target: %v", err)
@@ -507,7 +708,7 @@ func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 
 	t.Run("test token mismatch", func(t *testing.T) {
 		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "", "")
+		bundle := windowsRejectionBundle(t, f, "", "")
 		output, err := f.installBundleWithOverrides(t, bundle, map[string]string{
 			"IPGW_INSTALL_TEST_TOKEN": "wrong-token",
 		})
@@ -519,7 +720,7 @@ func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 
 	t.Run("unexpected archive member", func(t *testing.T) {
 		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "unexpected-member", "")
+		bundle := windowsRejectionBundle(t, f, "unexpected-member", "")
 		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
 			t.Fatalf("archive with an extra member unexpectedly succeeded:\n%s", output)
 		}
@@ -528,7 +729,7 @@ func TestWindowsOfflineInputPathArchiveAndACLRejections(t *testing.T) {
 
 	t.Run("link-typed archive member", func(t *testing.T) {
 		f := newWindowsFixture(t)
-		bundle := buildWindowsBundle(t, f.root, "v1.0.0", "", "LICENSE")
+		bundle := windowsRejectionBundle(t, f, "", "LICENSE")
 		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
 			t.Fatalf("archive with a link-typed member unexpectedly succeeded:\n%s", output)
 		}
@@ -548,12 +749,15 @@ func assertWindowsInstalledVersion(t *testing.T, f *windowsFixture, version stri
 			t.Fatalf("entry %s is not a regular published file: mode=%v", name, info.Mode())
 		}
 		cmd := exec.Command(path, "--version")
+		cmd.Dir = f.root
+		cmd.Env = f.environment(nil)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("run %s --version: %v\n%s", name, err, output)
 		}
-		if strings.TrimSpace(string(output)) != version {
-			t.Fatalf("entry %s reports %q, want %q", name, strings.TrimSpace(string(output)), version)
+		expected := "IPGW-Meta " + version
+		if strings.TrimSpace(string(output)) != expected {
+			t.Fatalf("entry %s reports %q, want %q", name, strings.TrimSpace(string(output)), expected)
 		}
 	}
 }
@@ -562,12 +766,15 @@ func assertWindowsActiveVersion(t *testing.T, f *windowsFixture, version string)
 	t.Helper()
 	path := filepath.Join(f.install, "active", "ipgw.exe")
 	cmd := exec.Command(path, "--version")
+	cmd.Dir = f.root
+	cmd.Env = f.environment(nil)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run active ipgw --version: %v\n%s", err, output)
 	}
-	if strings.TrimSpace(string(output)) != version {
-		t.Fatalf("active entry reports %q, want %q", strings.TrimSpace(string(output)), version)
+	expected := "IPGW-Meta " + version
+	if strings.TrimSpace(string(output)) != expected {
+		t.Fatalf("active entry reports %q, want %q", strings.TrimSpace(string(output)), expected)
 	}
 }
 
@@ -704,15 +911,16 @@ foreach($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIde
 	runPowerShellHelper(t, script, path, protected)
 }
 
-func grantEveryoneWrite(t *testing.T, path string) {
+func grantPrincipalWrite(t *testing.T, path, sidValue string) {
 	t.Helper()
 	script := `$p=$args[0]
+$sidValue=$args[1]
 $acl=[IO.File]::GetAccessControl($p,[Security.AccessControl.AccessControlSections]::Access)
-$sid=New-Object Security.Principal.SecurityIdentifier('S-1-1-0')
+$sid=New-Object Security.Principal.SecurityIdentifier($sidValue)
 $rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,[Security.AccessControl.FileSystemRights]::Write,[Security.AccessControl.AccessControlType]::Allow)
 [void]$acl.AddAccessRule($rule)
 [IO.File]::SetAccessControl($p,$acl)`
-	runPowerShellHelper(t, script, path)
+	runPowerShellHelper(t, script, path, sidValue)
 }
 
 func createJunction(t *testing.T, link, target string) {

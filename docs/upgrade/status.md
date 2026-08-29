@@ -12,7 +12,7 @@ status: approved
 |---|---|---|---|
 | M0 文档与紧急安全 | in_progress | 历史秘密清理、secret scan、日志脱敏、自更新禁用 | [计划](plan.md#34-m0-历史清理)、[安全](../architecture/security.md) |
 | M1 协议正确性与 SDK | complete | HTTPS-only、ticket 截获、动态发现、typed errors、最终身份校验 | [协议](../architecture/protocol-correctness.md)、[SDK](../reference/go-sdk.md) |
-| M2 三入口、配置与自动化 | in_progress | 三二进制、JSON/退出码、profiles、迁移和原子安装 | [CLI](../reference/cli.md)、[迁移](../operations/config-migration.md) |
+| M2 三入口、配置与自动化 | complete | 三二进制、JSON/退出码、profiles、迁移和原子安装 | [CLI](../reference/cli.md)、[迁移](../operations/config-migration.md) |
 | M3 v1 候选与稳定发布 | not_started | 自动化门禁、跨平台构建、校园网人工验收 | [发布](../operations/release.md)、[证据](../evidence/README.md) |
 | 1.x 后续功能迁移 | not_started | 会话 → 套餐/当前用量 → 历史用量/账单/充值 | [迁移矩阵](migration-matrix.md) |
 
@@ -25,7 +25,7 @@ status: approved
 - `ipgw`、`ipgw-meta`、`ipgw-legacy` 三入口、模式优先级、稳定 JSON envelope/退出码、named profiles、keyring/env/file/prompt provider、事务化双来源配置迁移及原子 bundle/安装脚本已实现。Config 读取、跨进程 mutation lock、pending-journal 写阻断、preview 目标代次核对和 keyring 提交失败清理均已加固并有确定性 race 覆盖。
 - CI/release workflow、六目标交叉构建定义和 release gate 已写入仓库；实现与治理已通过 PR #1 以普通 merge 合入 `main` 的 `f927d7316885a26c8289ba77bc04ed27e379d3c8`（tree `4c5f253efebd5cea7bc85b0b5de5c2af84ed54f3`），但尚未形成 candidate-set、安装或真实校园网证据，因此不能外推为 M3 完成。
 
-M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直到安装/升级/回滚 smoke test 与 Unix 实机权限行为完成相应验证；不得把交叉编译或语法检查外推为实机安装证据。
+M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、离线事务安装器与六平台原生 release-shaped asset 门禁均已完成；这些临时 PR artifact 不是 M3 candidate-set 或公开 release，不得外推为 M3 完成。
 
 ## 2026-08-28 冻结前只读核验
 
@@ -86,6 +86,15 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 - 本地 Windows PowerShell `5.1.26100.9168` 下完整安装器矩阵、`go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check`、固定 gitleaks `8.30.1` 合成 canary/全历史/reflog/工作树扫描及 `git fsck --full` 均通过；`fsck` 仅报告三个既有 dangling tree。
 - `WP-M2-INSTALL-WINDOWS` 完成；合成 bundle 的 Windows 原生测试不等于公开 release asset 的六平台 smoke，因此 M2 继续保持 `in_progress`，下一工作包为 `WP-M2-INSTALL-NATIVE`。
 
+## 2026-08-29 六平台原生 release-shaped 安装矩阵核验
+
+- `WP-M2-INSTALL-NATIVE` 经原生矩阵验收的 implementation head 为 signed commit `d54a30d085d9663c03970cd66b76f5df13216b0b`。package job 从精确 PR test-merge source commit `05035df77c4e75586e9cd5b03d569cc17a0a5e78`、tree `5eb94413504bda1d8231ec99a1081aaf7435666f` 生成版本 `native-05035df77c4e`；不可变 artifact ID 为 `9713909266`，digest 为 `sha256:51341d93b6eb09e758e2a62450312abca18400294d385d8a6e986a39dead9d5d`。
+- 六个原生 runner 下载并核验同一精确 artifact，没有在 runner 上重建或重新打包。`linux-arm64`、`windows-arm64`、`darwin-amd64` 执行 release-shaped asset smoke；`linux-amd64`、`windows-amd64`、`darwin-arm64` 执行包含全部固定 failpoint、rollback failure、路径攻击和权限矩阵的 full 门禁。
+- 首轮 Windows job 超时的根因是测试子进程环境 allowlist 遗漏 `PSModuleAnalysisCachePath`，导致 Windows PowerShell 每次启动重建 module analysis cache。signed fix `d54a30d085d9663c03970cd66b76f5df13216b0b` 仅恢复该缓存路径，未提高任何 timeout。
+- implementation-head CI run `33249498526` 的六项 required checks 全部成功；native workflow run `33249498529` 的 package 与六个原生 runner 共七个 job 全部成功。
+- 本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check` 全部通过；固定 gitleaks `8.30.1` 的合成 canary、implementation-head 全历史/全部 refs/reflog 与精确工作树扫描均为 0 命中。`git fsck --full` 通过，仅报告四个 dangling tree，且无损坏或 dangling commit。
+- `WP-M2-INSTALL-NATIVE` 与 M2 已完成，下一工作包为 `WP-M3-LIVEGATE-SCHEMA`。本节 artifact 是仅用于本 PR 原生门禁的临时 release-shaped 验证产物，不是 M3 candidate-set、公开 release、tag 或发布资产。
+
 ## 2026-08-27 本地验收结果
 
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 均通过。
@@ -96,12 +105,11 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- 仓库治理、只读 baseline、`WP-M2-CONFIG-CLOSE`、`WP-M2-INSTALL-UNIX` 与 `WP-M2-INSTALL-WINDOWS` 已完成；下一工作包为 `WP-M2-INSTALL-NATIVE`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
-- 尚未完成六目标公开 release asset 的实际安装、升级、回滚 smoke test；当前 Unix 合成 bundle 已在 Ubuntu 与 macOS 原生 runner 覆盖 acquisition、路径、权限和完整固定 failpoint，但不能替代 `WP-M2-INSTALL-NATIVE` 的 release-asset 矩阵。
+- 仓库治理、只读 baseline 与所有 M2 工作包均已完成；下一工作包为 `WP-M3-LIVEGATE-SCHEMA`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
+- 六平台原生 release-shaped asset 安装矩阵已使用同一精确临时 PR artifact 完成；该 artifact 只构成 M2 原生门禁证据，不是 M3 candidate-set、公开 release、tag 或发布资产。
 - 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是 main ruleset 的六项 required checks，也非本工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
-- 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
+- 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow；临时 PR artifact 不得视为该 candidate-set。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
-- Unix 与 Windows 离线安装器均已满足 [ADR-0008](../architecture/decisions/ADR-0008-offline-transactional-installer.md) 的合成 acquisition、权限/reparse 和完整 failpoint 门禁，但六平台原生公开 release-asset 矩阵仍未执行。
 
 ## 当前已知能力限制
 
