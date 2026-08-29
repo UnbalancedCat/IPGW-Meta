@@ -11,10 +11,10 @@ snapshot_at: 2026-08-29
 
 ## 当前执行
 
-- 执行者：无（`WP-M2-CONFIG-CLOSE` 完成后的安全停点）。
-- 工作包：`WP-M2-CONFIG-CLOSE`（`complete`）；下一工作包为 `WP-M2-INSTALL-UNIX`（未开始）。
-- 修改边界：本窗口只修改 `internal/config`、迁移测试以及本文件与正式状态的事实更新；未修改安装器、workflow、发布面、校园网会话，未处理隔离工作区、敏感备份或 rewrite mirror，也未执行 force-push、创建 release/tag/资产。
-- 停止条件：进入下一工作包前重新读取离线安装规范并核对 `origin/main`、rulesets、签名和工作树；`WP-M2-INSTALL-UNIX` 仅允许修改 `install.sh` 与 Unix 测试。若需要扩张到 Windows、workflow、发布或真实安装目标，或 refs/门禁漂移，则立即停止。
+- 执行者：Codex。
+- 工作包：`WP-M2-INSTALL-UNIX`（`in_progress`）。
+- 修改边界：仅修改 `install.sh`、Unix 安装器测试以及本文件与正式状态的最小事实更新；不修改 Windows 安装器、workflow、发布资产、校园网会话，不处理隔离工作区、敏感备份或 rewrite mirror，也不执行 force-push、创建 release/tag/资产。
+- 停止条件：仅按 [`REL-INSTALL-001`](../docs/operations/offline-install.md#rel-install-001离线-acquisition)、[`REL-INSTALL-002`](../docs/operations/offline-install.md#rel-install-002归档路径与权限) 与 [`REL-INSTALL-003`](../docs/operations/offline-install.md#rel-install-003事务回滚与失败注入)补齐 Unix 离线 acquisition、路径/权限和固定 failpoint 门禁；若需要修改公共安装接口、Windows、workflow/发布规范、访问真实安装目标，或 refs/rulesets 漂移、现有范围外门禁失败，则立即停止。
 
 ## 已完成
 
@@ -40,5 +40,5 @@ snapshot_at: 2026-08-29
 
 ## 下一步
 
-- 从受保护 `main` 新开分支执行 `WP-M2-INSTALL-UNIX`；修改范围仅为 `install.sh` 与 Unix 测试，按 [`REL-INSTALL-001`](../docs/operations/offline-install.md#rel-install-001离线-acquisition)补齐离线、路径、权限和 failpoint 门禁。
+- 审计 `install.sh` 与现有 Unix 测试相对 [`REL-INSTALL-001`](../docs/operations/offline-install.md#rel-install-001离线-acquisition)、[`REL-INSTALL-002`](../docs/operations/offline-install.md#rel-install-002归档路径与权限) 与 [`REL-INSTALL-003`](../docs/operations/offline-install.md#rel-install-003事务回滚与失败注入) 的覆盖，在允许范围内补齐离线、路径、权限和固定 failpoint 门禁；不把本工作包的合成测试外推为六平台原生安装矩阵完成。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
