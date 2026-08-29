@@ -2,7 +2,7 @@
 plan_id: IPGW-META-V1
 revision: 2026-08-28-r2
 derived: true
-snapshot_at: 2026-08-28
+snapshot_at: 2026-08-29
 ---
 
 # 当前执行交接
@@ -11,10 +11,10 @@ snapshot_at: 2026-08-28
 
 ## 当前执行
 
-- 执行者：无（仓库治理与 baseline 完成后的安全停点）。
-- 工作包：`WP-BASELINE-VERIFY`（`complete`）；下一工作包为 `WP-M2-CONFIG-CLOSE`（未开始）。
-- 修改边界：本窗口完成 PR #1 普通 merge、main `required_signatures` 启用与只读 baseline；未 force-push、squash/rebase、创建 release/tag/资产、修改校园网会话或处理隔离工作区、敏感备份与 rewrite mirror。
-- 停止条件：进入下一工作包前重新核对 `origin/main`、rulesets、tags、签名与工作树；`WP-M2-CONFIG-CLOSE` 仅允许修改 `internal/config` 与迁移测试。任一前置漂移、门禁失败或修改范围扩张时停止。
+- 执行者：Codex。
+- 工作包：`WP-M2-CONFIG-CLOSE`（`in_progress`）。
+- 修改边界：仅修改 `internal/config`、迁移测试以及本文件与正式状态的最小事实更新；不修改安装器、workflow、发布面、校园网会话，不处理隔离工作区、敏感备份或 rewrite mirror，也不执行 force-push、创建 release/tag/资产。
+- 停止条件：仅按 [`MIG-TRANSACTION-001`](../docs/operations/config-migration.md#mig-transaction-001journal提交与回滚) 补齐失败注入、Unix 权限和 keyring backend 门禁；若发现需要修改公共 CLI/SDK/JSON/配置契约或 ADR、真实凭据/系统 keyring、范围外代码，或 refs/rulesets 漂移、既有门禁出现范围外失败，则立即停止。
 
 ## 已完成
 
@@ -38,5 +38,5 @@ snapshot_at: 2026-08-28
 
 ## 下一步
 
-- 从受保护 `main` 新开工作分支执行 `WP-M2-CONFIG-CLOSE`；修改范围仅为 `internal/config` 与迁移测试，按 [`MIG-TRANSACTION-001`](../docs/operations/config-migration.md#mig-transaction-001journal提交与回滚)完成失败注入、Unix 权限和 keyring backend 门禁。
+- 审计 `WP-M2-CONFIG-CLOSE` 现有覆盖，在允许范围内补齐失败注入、Unix 实际权限和合成 keyring backend 门禁；完成聚焦与全局门禁后更新正式状态并通过受保护分支合并。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。

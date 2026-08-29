@@ -87,6 +87,128 @@ accounts: [{username: fixture, password: %s}]
 	}
 }
 
+func TestApplyMigrationBackupsPreserveCompleteSourcesAtPrivateFixedPaths(t *testing.T) {
+	paths := migrationFixturePaths(t)
+	encoded := base64.StdEncoding.EncodeToString([]byte(migrationSecretCanary))
+	metaData := []byte(fmt.Sprintf("default_account: meta-fixture\naccounts: [{username: meta-fixture, password: %s}]\n", encoded))
+	upstreamData := []byte("{\"default_account\":\"upstream-fixture\",\"accounts\":[{\"username\":\"upstream-fixture\",\"encrypted_password\":\"opaque-upstream-fixture\"}]}\n")
+	writeMigrationFixture(t, paths.LegacyMetaYAML, string(metaData))
+	writeMigrationFixture(t, paths.LegacyUpstream, string(upstreamData))
+
+	plan, err := BuildMigrationPlan(paths, Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range []struct {
+		name      string
+		reference string
+	}{
+		{name: "meta-fixture", reference: "IPGW_META_FIXTURE_PASSWORD"},
+		{name: "upstream-fixture", reference: "IPGW_UPSTREAM_FIXTURE_PASSWORD"},
+	} {
+		if err := ResolveMigrationCredential(&plan, profile.name, CredentialRef{Provider: ProviderEnv, Reference: profile.reference}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expectedByLocation := make(map[string][]byte, len(plan.Sources))
+	for _, source := range plan.Sources {
+		switch source.Kind {
+		case MigrationSourceMetaYAML:
+			expectedByLocation[source.LocationHash] = metaData
+		case MigrationSourceNEUCNJSON:
+			expectedByLocation[source.LocationHash] = upstreamData
+		default:
+			t.Fatalf("unexpected source kind %q", source.Kind)
+		}
+	}
+
+	result, err := ApplyMigrationWithOptions(paths, &Store{Path: paths.ConfigFile}, Default(), plan, MigrationApplyOptions{ToolVersion: "test-v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker, exists, err := loadMigrationMarker(paths.MigrationMarker)
+	if err != nil || !exists {
+		t.Fatalf("loadMigrationMarker(): exists=%t err=%v", exists, err)
+	}
+	backupDir := filepath.Join(paths.BaseDir, "migration-backups")
+	assertPrivateMigrationDirectory(t, backupDir)
+	if len(marker.Backups) != 2 || len(result.Backups) != 2 {
+		t.Fatalf("backup records: marker=%#v result=%#v", marker.Backups, result.Backups)
+	}
+	for index, source := range marker.Sources {
+		wantPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s-%02d.backup", source.Kind, marker.TransactionID, index+1))
+		if got := result.Backups[source.LocationHash]; got != wantPath {
+			t.Fatalf("backup path for %s = %q, want %q", source.Kind, got, wantPath)
+		}
+		data, err := os.ReadFile(wantPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(data, expectedByLocation[source.LocationHash]) {
+			t.Fatalf("backup for %s did not preserve the complete source bytes", source.Kind)
+		}
+		assertPrivateMigrationFile(t, wantPath)
+	}
+}
+
+func TestApplyMigrationFailureInjectionAfterEveryJournalPhase(t *testing.T) {
+	for _, phase := range []migrationJournalPhase{
+		migrationPhasePrepared,
+		migrationPhaseBackups,
+		migrationPhaseKeyring,
+		migrationPhaseConfig,
+		migrationPhaseMarkerVerified,
+	} {
+		t.Run(string(phase), func(t *testing.T) {
+			paths := migrationFixturePaths(t)
+			plan := buildSingleImportablePlan(t, paths, Default())
+			if err := ResolveMigrationCredential(&plan, "fixture", CredentialRef{Provider: ProviderEnv, Reference: "IPGW_FIXTURE_PASSWORD"}); err != nil {
+				t.Fatal(err)
+			}
+			hits := 0
+			result, err := applyMigrationWithTestHooks(paths, &Store{Path: paths.ConfigFile}, Default(), plan, MigrationApplyOptions{
+				ToolVersion: "test-v1",
+			}, &migrationApplyTestHooks{failAfterJournalPhase: func(got migrationJournalPhase) bool {
+				if got != phase {
+					return false
+				}
+				hits++
+				return true
+			},
+			})
+			if hits != 1 {
+				t.Fatalf("failure hook hits = %d, want 1", hits)
+			}
+			if phase != migrationPhaseMarkerVerified {
+				if err == nil {
+					t.Fatal("ApplyMigrationWithOptions() succeeded before marker verification")
+				}
+				assertMigrationApplySideEffectFree(t, paths)
+				return
+			}
+			if err != nil {
+				t.Fatalf("marker-verified cleanup recovery returned error: %v", err)
+			}
+			if len(result.Backups) != 1 {
+				t.Fatalf("marker-verified result = %#v", result)
+			}
+			if _, statErr := os.Stat(paths.MigrationMarker); statErr != nil {
+				t.Fatalf("committed recovery lost marker: %v", statErr)
+			}
+			normalized := normalizeMigrationPaths(paths)
+			for _, recovery := range []string{
+				normalized.MigrationJournal,
+				normalized.MigrationConfigRecovery,
+				normalized.MigrationMarkerRecovery,
+			} {
+				if _, statErr := os.Stat(recovery); !errors.Is(statErr, os.ErrNotExist) {
+					t.Fatalf("committed recovery left %s: %v", filepath.Base(recovery), statErr)
+				}
+			}
+		})
+	}
+}
+
 func TestApplyMigrationSourceChangeFailsBeforeFirstSideEffect(t *testing.T) {
 	paths := migrationFixturePaths(t)
 	plan := buildSingleImportablePlan(t, paths, Default())
@@ -222,6 +344,14 @@ func TestApplyMigrationKeyringTransaction(t *testing.T) {
 			wantDelete: true,
 		},
 		{
+			name: "write then error is compensated",
+			configure: func(backend *migrationFakeKeyring, _ string) {
+				backend.writeBeforeSetError = true
+				backend.setErr = errors.New("set exposed " + migrationSecretCanary)
+			},
+			wantDelete: true,
+		},
+		{
 			name: "readback mismatch rolls transaction back",
 			configure: func(backend *migrationFakeKeyring, _ string) {
 				backend.corruptSet = true
@@ -260,6 +390,54 @@ func TestApplyMigrationKeyringTransaction(t *testing.T) {
 			assertMigrationApplySideEffectFree(t, paths)
 		})
 	}
+}
+
+func TestApplyMigrationKeyringRollbackFailurePreservesRecoveryMaterials(t *testing.T) {
+	paths := migrationFixturePaths(t)
+	plan := buildSingleImportablePlan(t, paths, Default())
+	secret := plan.state.secrets["fixture"]
+	if err := ResolveMigrationCredential(&plan, "fixture", CredentialRef{Provider: ProviderKeyring}); err != nil {
+		t.Fatal(err)
+	}
+	reference := migrationProfileByName(t, &plan, "fixture").Credential.Reference
+	backend := newMigrationFakeKeyring()
+	backend.writeBeforeSetError = true
+	backend.setErr = errors.New("set exposed " + migrationSecretCanary)
+	backend.deleteErr = errors.New("delete exposed " + migrationSecretCanary)
+
+	_, err := ApplyMigrationWithOptions(paths, &Store{Path: paths.ConfigFile}, Default(), plan, MigrationApplyOptions{
+		ToolVersion: "test-v1", ProviderOptions: ProviderOptions{Keyring: backend},
+	})
+	if err == nil || !strings.Contains(err.Error(), "automatic rollback is incomplete") {
+		t.Fatalf("ApplyMigrationWithOptions() error = %v", err)
+	}
+	if strings.Contains(err.Error(), migrationSecretCanary) {
+		t.Fatalf("rollback error leaked backend material: %v", err)
+	}
+	assertZeroedBytes(t, secret)
+	normalized := normalizeMigrationPaths(paths)
+	journal, loadErr := loadMigrationJournal(normalized.MigrationJournal)
+	if loadErr != nil || journal.Phase != migrationPhaseBackups {
+		t.Fatalf("retained journal: phase=%q err=%v", journal.Phase, loadErr)
+	}
+	if _, exists := backend.values[reference]; !exists {
+		t.Fatal("uncertain keyring value disappeared despite failed cleanup")
+	}
+	for _, backup := range journal.Backups {
+		if _, statErr := os.Stat(backup.Path); statErr != nil {
+			t.Fatalf("rollback failure removed recovery backup: %v", statErr)
+		}
+	}
+
+	backend.setErr = nil
+	backend.deleteErr = nil
+	if err := RecoverPendingMigration(paths, MigrationApplyOptions{ProviderOptions: ProviderOptions{Keyring: backend}}); err != nil {
+		t.Fatalf("RecoverPendingMigration() error = %v", err)
+	}
+	if _, exists := backend.values[reference]; exists {
+		t.Fatal("successful retry left the uncertain keyring value")
+	}
+	assertMigrationApplySideEffectFree(t, paths)
 }
 
 func TestRecoverPendingMigrationRemovesKeyringWriteBeforeCheckpoint(t *testing.T) {
@@ -474,13 +652,14 @@ func reflectMigrationResults(left, right MigrationResult) bool {
 }
 
 type migrationFakeKeyring struct {
-	values     map[string]string
-	getErr     error
-	setErr     error
-	deleteErr  error
-	corruptSet bool
-	sets       int
-	deletes    int
+	values              map[string]string
+	getErr              error
+	setErr              error
+	deleteErr           error
+	corruptSet          bool
+	writeBeforeSetError bool
+	sets                int
+	deletes             int
 }
 
 func newMigrationFakeKeyring() *migrationFakeKeyring {
@@ -501,6 +680,9 @@ func (f *migrationFakeKeyring) Get(_ string, user string) (string, error) {
 func (f *migrationFakeKeyring) Set(_ string, user, password string) error {
 	f.sets++
 	if f.setErr != nil {
+		if f.writeBeforeSetError {
+			f.values[user] = password
+		}
 		return f.setErr
 	}
 	if f.corruptSet {

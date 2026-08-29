@@ -187,3 +187,8 @@ func assertCurrentUserOnlyACL(t *testing.T, path string, directory bool) {
 		t.Fatalf("DACL for directory %q does not inherit to children", filepath.Base(path))
 	}
 }
+
+func assertPrivateMigrationDirectory(t *testing.T, path string) {
+	t.Helper()
+	assertCurrentUserOnlyACL(t, path, true)
+}
