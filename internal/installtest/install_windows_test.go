@@ -87,9 +87,11 @@ func findWindowsRepoRoot(t *testing.T) string {
 }
 
 func (f *windowsFixture) environment(overrides map[string]string) []string {
-	env := make([]string, 0, 24)
+	env := make([]string, 0, 25)
+	// GitHub's Windows images prewarm this cache so each short-lived Windows
+	// PowerShell process does not pay the module-analysis cold-start penalty.
 	for _, name := range []string{
-		"COMSPEC", "OS", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE",
+		"COMSPEC", "OS", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "PSModuleAnalysisCachePath",
 		"PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432",
 		"SYSTEMDRIVE", "SYSTEMROOT", "WINDIR",
 	} {
