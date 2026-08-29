@@ -12,7 +12,7 @@ snapshot_at: 2026-08-29
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`WP-M2-INSTALL-NATIVE`（`in_progress`）。
+- 工作包：`WP-M2-INSTALL-NATIVE`（`complete`；PR #6 待普通 merge）。
 - 修改边界：修改原生安装 Actions 矩阵、其测试 harness、原生门禁发现的三入口 `--version` 契约内最小修复与对应 CLI 规范/测试，以及本文件与正式状态的最小事实更新；六个平台必须下载同一打包 job 产生的 release-shaped artifact。不得修改 Unix/Windows 安装器、既有 release workflow/script、main/tag ruleset，不得创建 release/tag/发布资产，也不得接触真实安装目标、校园网会话、隔离工作区、敏感备份或 rewrite mirror。
 - 停止条件：任一远端 ref/SHA、ruleset、签名或工作树漂移；任一规范 runner 标签不可用；artifact hash/成员不一致；需要在原生 runner 重建或重打包；需要修改安装器、既有 release workflow/script 或规则保护；需要创建 release/tag/发布资产、force-push 或接触真实校园网会话时立即停止。只有六平台 fresh/upgrade/三入口/launcher/基础 rollback 和三代表平台完整故障矩阵全部通过，才能完成本工作包。
 
@@ -32,15 +32,16 @@ snapshot_at: 2026-08-29
 - `WP-M2-CONFIG-CLOSE`：signed commit `598850195a65167d121c2fc86477cf56676bb8df` 补齐五个 journal phase 的逐事务失败注入、两类来源 backup 原字节/固定路径/跨平台权限验证，以及 keyring 写后报错与补偿失败恢复门禁；PR #3 首轮 CI run `33224027909` 六项 required checks 全部成功，本地全局门禁、固定 gitleaks `8.30.1` 扫描与 `fsck` 通过，临时目标已清理。
 - `WP-M2-INSTALL-UNIX`：固定离线 bundle/SHA 接口、私有副本外层哈希、七成员类型/大小/压缩比与 canonical manifest 共用验证链、路径/权限约束、受限 journal、active 分离和逆序回滚均已实现；9 个前向与 3 个回滚 failpoint、fresh/upgrade/三入口、launcher、路径攻击与权限测试在 Ubuntu 和 macOS 原生 CI 通过。PR #4 implementation head `5dfe60ea152e4fd23677fe8cc18f4e2b59e151f5` 的 CI run `33227444605` 六项 required checks 全部成功；这不代表 `WP-M2-INSTALL-NATIVE` 的六平台 release-asset 矩阵完成。
 - `WP-M2-INSTALL-WINDOWS`：固定离线 bundle/SHA 接口、已打开来源到私有副本的外层哈希、Users/Authenticated Users/Everyone 写 ACL 拒绝、固定磁盘/同卷/逐祖先 reparse 校验、七成员 bounded extraction 与 canonical manifest 共用验证链均已实现；受保护 ACL、`active` junction、三个 hard-link 入口、受限原子 journal、PATH 测试隔离和逆序回滚覆盖 9 个前向与 3 个回滚 failpoint。首轮 CI run `33237097662` 暴露 pwsh 7 → Windows PowerShell 5.1 的模块路径继承差异；signed fix `b5a4d5c4c6e4f4e6fb48d3361fdb94a7b26905c0` 后 run `33237394630` 六项 required checks 全部成功。这不代表 `WP-M2-INSTALL-NATIVE` 的六平台 release-asset 矩阵完成。
+- `WP-M2-INSTALL-NATIVE`：六个官方原生 runner 均消费单一打包 job 产生的 release-shaped artifact；验收 artifact ID 为 `9713909266`、digest 为 `sha256:51341d93b6eb09e758e2a62450312abca18400294d385d8a6e986a39dead9d5d`，source 为 `05035df77c4e75586e9cd5b03d569cc17a0a5e78`、tree 为 `5eb94413504bda1d8231ec99a1081aaf7435666f`。首轮实现的 Windows 测试严格环境 allowlist 遗漏 GitHub runner 预热的 `PSModuleAnalysisCachePath`，导致每个短生命周期 Windows PowerShell 子进程重复承担模块分析冷启动并使测试退化至超过 10 分钟；signed fix `d54a30d085d9663c03970cd66b76f5df13216b0b` 仅恢复该缓存路径。native run `33249498529` 七个 jobs 全部成功，CI run `33249498526` 六项 required checks 全部成功；signed commits `d20d01228e8305314025c0d057dc8c98db90fb22` 与 `d54a30d085d9663c03970cd66b76f5df13216b0b` 均由 GitHub 验证为 `verified=true, reason=valid`。本工作包已完成，PR #6 待普通 merge。
 - Signing key 登记后，`15fb31d`、`c562483`、`5bee31b`、`f1ca77c` 与 `907b3e7` 当前均由 GitHub 验证为 `verified=true, reason=valid`；不得为追溯修正签名状态而改写历史。
 
 ## 阻塞
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
 - 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
-- 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是当前 main required check，也非本工作包引入，但进入 M3 前必须按发布规范诊断。
+- 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是当前 main required check，也非本工作包引入，但进入 WP-M3-CANDIDATE / promotion 前必须按发布规范诊断。
 
 ## 下一步
 
-- 将当前 `WP-M2-INSTALL-NATIVE` 实现创建签名提交并推送 `codex/v1-m2-install-native`，建立 PR 后等待一个打包 job 的同一 release-shaped artifact 在六个官方原生 runner 完成 smoke/full 矩阵；任一原生 runner 不可用或任一矩阵失败时保持 `in_progress` 并停止，不得在 runner 侧重建、重打包或以交叉编译替代。
+- 为本次状态事实更新创建签名提交并推送，核对 GitHub 签名状态后等待 PR #6 检查；检查全部成功后以普通 merge 合并 PR #6，并复验精确 `main` SHA、双亲、tree、签名状态与 required checks。安全收口后进入 `WP-M3-LIVEGATE-SCHEMA`；既有 `.github/workflows/release.yml` 无 job 即时失败仍须在进入 WP-M3-CANDIDATE / promotion 前按发布规范诊断。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
