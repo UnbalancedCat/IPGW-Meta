@@ -143,6 +143,13 @@ stat_fields() {
     esac
 }
 
+stat_open_bundle_fields() {
+    case "$kernel" in
+        Darwin) stat -f '%Lp %z %u %d %i' <&9 ;;
+        Linux) stat -Lc '%a %s %u %d %i' -- /dev/fd/9 ;;
+    esac
+}
+
 validate_clean_absolute_path() {
     local path=$1
     local label=$2
@@ -303,7 +310,7 @@ if ((offline)); then
     exec 9<"$bundle_path"
     bundle_fd_open=1
     path_fields=$(stat_fields "$bundle_path")
-    handle_fields=$(stat_fields /dev/fd/9)
+    handle_fields=$(stat_open_bundle_fields)
     if [[ $path_fields != "$handle_fields" ]]; then
         echo "offline bundle changed while being opened" >&2
         exit 1
