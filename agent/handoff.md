@@ -11,10 +11,10 @@ snapshot_at: 2026-08-29
 
 ## 当前执行
 
-- 执行者：Codex。
-- 工作包：`WP-M2-INSTALL-WINDOWS`（`in_progress`）；分支 `codex/v1-m2-install-windows` 从精确 `origin/main` `074fcd5f1f62920bf65685a16900a140e1d386b7` / tree `ee1aa3e7b64b318cebe36c6566a60ea1fc717892` 创建。
-- 修改边界：本窗口仅修改 `install.ps1`、Windows 安装器测试以及本文件与正式状态的最小事实更新；不修改 Unix 安装器、workflow、release script、发布资产或真实安装目标，不接触校园网会话、隔离工作区、敏感备份或 rewrite mirror，也不执行 force-push、创建 release/tag/资产。
-- 停止条件：若实现需要扩张到上述边界外、触及真实用户安装目录或六平台原生 release-asset 矩阵，或发现 refs/SHA、repository identity、required checks、rulesets、签名配置漂移或权限不足，则立即停止。提交前必须通过 Windows 原生测试与全局门禁，并生成可由 GitHub 验证的 SSH 签名提交。
+- 执行者：无（`WP-M2-INSTALL-WINDOWS` 完成后的安全停点）。
+- 工作包：`WP-M2-INSTALL-WINDOWS`（`complete`）；下一工作包为 `WP-M2-INSTALL-NATIVE`（未开始）。
+- 修改边界：本窗口仅修改 `install.ps1`、Windows 安装器测试以及本文件与正式状态的最小事实更新；未修改 Unix 安装器、workflow、release script、发布资产或真实安装目标，未接触校园网会话、隔离工作区、敏感备份或 rewrite mirror，也未执行 force-push、创建 release/tag/资产。
+- 停止条件：进入下一工作包前重新读取原生安装与发布规范，并重新核对 `origin/main`、PR/refs、rulesets、签名和工作树。`WP-M2-INSTALL-NATIVE` 只能测试同一冻结实现版本的六平台公开 release asset；若需要创建 release/tag/资产、修改 workflow 或接触真实校园网会话，则立即停止并重新取得对应授权。
 
 ## 已完成
 
@@ -31,6 +31,7 @@ snapshot_at: 2026-08-29
 - `WP-BASELINE-VERIFY`：在精确 `main` `f927d7316885a26c8289ba77bc04ed27e379d3c8` 上完成 test/race/vet/doccheck、六目标三入口 cross-build、`internal/config` 六目标编译、合成 gitleaks canary、14 commits 全历史/refs/reflog 与工作树扫描、`fsck`；全部通过且临时目录已清理。
 - `WP-M2-CONFIG-CLOSE`：signed commit `598850195a65167d121c2fc86477cf56676bb8df` 补齐五个 journal phase 的逐事务失败注入、两类来源 backup 原字节/固定路径/跨平台权限验证，以及 keyring 写后报错与补偿失败恢复门禁；PR #3 首轮 CI run `33224027909` 六项 required checks 全部成功，本地全局门禁、固定 gitleaks `8.30.1` 扫描与 `fsck` 通过，临时目标已清理。
 - `WP-M2-INSTALL-UNIX`：固定离线 bundle/SHA 接口、私有副本外层哈希、七成员类型/大小/压缩比与 canonical manifest 共用验证链、路径/权限约束、受限 journal、active 分离和逆序回滚均已实现；9 个前向与 3 个回滚 failpoint、fresh/upgrade/三入口、launcher、路径攻击与权限测试在 Ubuntu 和 macOS 原生 CI 通过。PR #4 implementation head `5dfe60ea152e4fd23677fe8cc18f4e2b59e151f5` 的 CI run `33227444605` 六项 required checks 全部成功；这不代表 `WP-M2-INSTALL-NATIVE` 的六平台 release-asset 矩阵完成。
+- `WP-M2-INSTALL-WINDOWS`：固定离线 bundle/SHA 接口、已打开来源到私有副本的外层哈希、Users/Authenticated Users/Everyone 写 ACL 拒绝、固定磁盘/同卷/逐祖先 reparse 校验、七成员 bounded extraction 与 canonical manifest 共用验证链均已实现；受保护 ACL、`active` junction、三个 hard-link 入口、受限原子 journal、PATH 测试隔离和逆序回滚覆盖 9 个前向与 3 个回滚 failpoint。首轮 CI run `33237097662` 暴露 pwsh 7 → Windows PowerShell 5.1 的模块路径继承差异；signed fix `b5a4d5c4c6e4f4e6fb48d3361fdb94a7b26905c0` 后 run `33237394630` 六项 required checks 全部成功。这不代表 `WP-M2-INSTALL-NATIVE` 的六平台 release-asset 矩阵完成。
 - Signing key 登记后，`15fb31d`、`c562483`、`5bee31b`、`f1ca77c` 与 `907b3e7` 当前均由 GitHub 验证为 `verified=true, reason=valid`；不得为追溯修正签名状态而改写历史。
 
 ## 阻塞
@@ -41,5 +42,5 @@ snapshot_at: 2026-08-29
 
 ## 下一步
 
-- 从受保护 `main` 新开分支执行 `WP-M2-INSTALL-WINDOWS`；修改范围仅为 `install.ps1` 与 Windows 测试，继续按 [`REL-INSTALL-001`](../docs/operations/offline-install.md#rel-install-001离线-acquisition)、[`REL-INSTALL-002`](../docs/operations/offline-install.md#rel-install-002归档路径与权限) 与 [`REL-INSTALL-003`](../docs/operations/offline-install.md#rel-install-003事务回滚与失败注入) 收敛 Windows acquisition、ACL/reparse 与事务 failpoint 门禁。
+- 在 Unix 与 Windows 安装器实现冻结并合入受保护 `main` 后执行 `WP-M2-INSTALL-NATIVE`；按 [`REL-INSTALL-003`](../docs/operations/offline-install.md#rel-install-003事务回滚与失败注入) 对同一公开 release asset 完成六平台 fresh/upgrade/三入口/launcher/基础 rollback smoke，并在 Linux amd64、Windows amd64 与 macOS arm64 完成代表平台完整故障矩阵。不得在远端重建、重打包或以交叉编译替代原生 runner。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
