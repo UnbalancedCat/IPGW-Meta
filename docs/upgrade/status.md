@@ -106,6 +106,16 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - merge 后 CI run `33259519538` 六项 required checks 和 native run `33259519515` 的 package 与六个平台共七个 jobs 全部成功；独立 release push run `33259518906` 仍以零 job 失败，须在 `WP-M3-CANDIDATE` / promotion 前诊断。
 - `WP-M3-LIVEGATE-SCHEMA` 完成；M3 保持 `in_progress`，下一工作包为 `WP-M3-LIVEGATE-RUNNER`。本工作包未实现 runner、candidate-set、attestation、release、tag 或 promotion，未启动校园网、QR、认证或其他网络会话。
 
+## 2026-08-30 Live-gate runner 收敛核验
+
+- `WP-M3-LIVEGATE-RUNNER` 已实现 maintainer-only runner：冻结 candidate/manifest/hash 绑定、固定 suite 状态机与清理权、私有三文件 evidence bundle、提交点与 durability 语义，以及不保留产品原始输出的结构化结果投影；公共 SDK、CLI、稳定 JSON、退出码、workflow、candidate/promotion 和安装器均未改变。
+- Linux 证据目录发布以 dirfd、`openat(O_NOFOLLOW)` 和 no-replace rename 约束并发创建，既有非私有目录只验证且 fail closed；candidate identity 指纹纳入 ctime。Windows 新建 bundle 文件显式设置当前用户 owner 与受保护 DACL，外来或 defaulted owner 继续拒绝。非 Linux/Windows 的真实 evidence publication 继续精确 fail closed，未扩展平台能力。
+- PR #10 首轮 CI run `33269797459` 暴露 Linux inode 复用/并发目录创建、macOS fail-closed 测试边界和 Windows 默认 owner 差异；signed fix commit `80462712f872519da73526927476fdad69edee32` 在不放宽验证器的前提下关闭这些问题。implementation commits `e5528f46792f7d9d3d087b2b59196106d6856976` 与 `80462712f872519da73526927476fdad69edee32` 均由 GitHub 验证为 `verified=true, reason=valid`。
+- 修复后本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 全部通过；Linux/macOS 全仓交叉构建和 `internal/livegate` 测试编译通过。固定 gitleaks `8.30.1` 合成 canary、签名前 31 commits 的全历史/全部 refs/reflog 和精确 174 个工作树文件扫描均为 0 命中；`git fsck --full` 无损坏或 dangling commit，临时扫描与构建目标已清理。
+- PR #10 最终 head 的 CI run `33271001499` 六项 required checks 全部成功，native run `33271001474` 的 package 与六个平台共七个 jobs 全部成功。PR 已以普通 merge 合入 `6196234374f72089affd5442d0b5c2c0193cf62d`；双亲依次为 `7585eb6c08d4e4471ae4783bd8c27fa10a9ebf23` 与 `80462712f872519da73526927476fdad69edee32`，tree 为 `b9383072cd8c32bf1f0aafd6596b4a6c0ae86077`，GitHub 签名为 `valid`。
+- merge 后 CI run `33271253178` 六项和 native run `33271253166` 七项全部成功。同一 merge SHA 的 release push run `33271252579` 仍以精确零 job 失败，证明既有发布 workflow 缺口仍存在；它不是 main required check，进入 `WP-M3-CANDIDATE` 修改前必须先只读诊断，且不得据此创建 tag、release 或发布资产。
+- `WP-M3-LIVEGATE-RUNNER` 完成；M3 继续保持 `in_progress`，下一工作包为 `WP-M3-CANDIDATE`。本工作包未创建 candidate-set、attestation、release、tag 或 promotion，也未启动校园网、QR、认证或其他真实网络会话；`REL-LIVE-MATRIX-001` 仍未执行。
+
 ## 2026-08-27 本地验收结果
 
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 均通过。
@@ -116,10 +126,10 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- 仓库治理、只读 baseline、所有 M2 工作包与 `WP-M3-LIVEGATE-SCHEMA` 均已完成；下一工作包为 `WP-M3-LIVEGATE-RUNNER`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
+- 仓库治理、只读 baseline、所有 M2 工作包、`WP-M3-LIVEGATE-SCHEMA` 与 `WP-M3-LIVEGATE-RUNNER` 均已完成；下一工作包为 `WP-M3-CANDIDATE`，但修改 candidate/promotion 前必须先只读诊断 release workflow 的零-job failure。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
 - 六平台原生 release-shaped asset 安装矩阵已使用同一精确临时 PR artifact 完成；该 artifact 只构成 M2 原生门禁证据，不是 M3 candidate-set、公开 release、tag 或发布资产。
-- 既有 `.github/workflows/release.yml` push run `33259518906` 仍以零 job 即时失败；它不是 main ruleset 的六项 required checks，也非本工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
-- `WP-M3-LIVEGATE-SCHEMA` 已完成，下一工作包为 `WP-M3-LIVEGATE-RUNNER`，因此 M3 继续为 `in_progress`；尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 live-gate runner、attestation 或 promotion workflow，临时 PR artifact 不得视为 candidate-set。M0 未完成前继续禁止新 release。
+- 既有 `.github/workflows/release.yml` push runs `33259518906` 与 `33271252579` 均以零 job 即时失败；后者精确绑定 runner merge commit。它们不是 main ruleset 的六项 required checks，也非 runner 工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
+- `WP-M3-LIVEGATE-RUNNER` 已完成，M3 继续为 `in_progress`；尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation 或 promotion workflow，临时 PR artifact 不得视为 candidate-set。M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 
 ## 当前已知能力限制

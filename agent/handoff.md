@@ -12,9 +12,9 @@ snapshot_at: 2026-08-30
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`WP-M3-LIVEGATE-RUNNER`（`in_progress`；base main `7585eb6c08d4e4471ae4783bd8c27fa10a9ebf23`）。
-- 修改边界：只在 `docs/operations/live-validation.md`、`docs/evidence/README.md`、`docs/operations/release.md` 补齐 runner-facing 最小契约，并在 `internal/livegate/**`、`internal/cmd/ipgw-live-gate/**` 与对应合成测试中实现 maintainer-only runner、冻结 candidate/manifest/hash 绑定、固定 suite 状态机与清理权、私有三文件 evidence bundle、durability 与泄漏门禁；完成时只允许本文件及 `docs/upgrade/status.md` 的最小事实更新。禁止修改公共 SDK/CLI/JSON/退出码、workflow、candidate/promotion、安装器或 ruleset，禁止创建 candidate/release/tag/发布资产或启动真实网络/认证/QR/校园网会话。
-- 停止条件：任一 ref/SHA、ruleset、签名、required check 或工作树漂移；docs 无法唯一确定安全行为而需要扩展契约；需要修改边界外文件；需要启动真实网络/认证/QR/校园网会话、接触凭据或原始输出；需要创建 candidate/release/tag/发布资产、force-push，或接触旧工作区、敏感备份、rewrite mirror 时立即停止。
+- 工作包：`WP-M3-CANDIDATE`（`not_started`；依赖 `WP-M3-LIVEGATE-RUNNER` 已满足，但修改前必须先只读诊断 release workflow 零-job failure）。
+- 修改边界：下一步只允许读取当前 `main`、`.github/workflows/release.yml`、相关 docs 与 GitHub Actions run/check 元数据，复现并解释零-job failure；开始任何 candidate/workflow 修改前必须先在本文件声明新的工作包边界和停止条件。禁止创建 candidate-set、attestation、release、tag 或发布资产，禁止启动真实网络/认证/QR/校园网会话。
+- 停止条件：任一 ref/SHA、ruleset、签名、required check 或工作树漂移；诊断需要重跑或修改 workflow、扩大 candidate/promotion 边界、启动真实网络/认证/QR/校园网会话、接触凭据或原始输出；需要创建 release/tag/发布资产、force-push，或接触旧工作区、敏感备份、rewrite mirror 时立即停止。
 
 ## 已完成
 
@@ -34,15 +34,16 @@ snapshot_at: 2026-08-30
 - `WP-M2-INSTALL-WINDOWS`：固定离线 bundle/SHA 接口、已打开来源到私有副本的外层哈希、Users/Authenticated Users/Everyone 写 ACL 拒绝、固定磁盘/同卷/逐祖先 reparse 校验、七成员 bounded extraction 与 canonical manifest 共用验证链均已实现；受保护 ACL、`active` junction、三个 hard-link 入口、受限原子 journal、PATH 测试隔离和逆序回滚覆盖 9 个前向与 3 个回滚 failpoint。首轮 CI run `33237097662` 暴露 pwsh 7 → Windows PowerShell 5.1 的模块路径继承差异；signed fix `b5a4d5c4c6e4f4e6fb48d3361fdb94a7b26905c0` 后 run `33237394630` 六项 required checks 全部成功。这不代表 `WP-M2-INSTALL-NATIVE` 的六平台 release-asset 矩阵完成。
 - `WP-M2-INSTALL-NATIVE`：六个官方原生 runner 均消费单一打包 job 产生的 release-shaped artifact；验收 artifact ID 为 `9713909266`、digest 为 `sha256:51341d93b6eb09e758e2a62450312abca18400294d385d8a6e986a39dead9d5d`，source 为 `05035df77c4e75586e9cd5b03d569cc17a0a5e78`、tree 为 `5eb94413504bda1d8231ec99a1081aaf7435666f`。首轮实现的 Windows 测试严格环境 allowlist 遗漏 GitHub runner 预热的 `PSModuleAnalysisCachePath`，导致每个短生命周期 Windows PowerShell 子进程重复承担模块分析冷启动并使测试退化至超过 10 分钟；signed fix `d54a30d085d9663c03970cd66b76f5df13216b0b` 仅恢复该缓存路径。native run `33249498529` 七个 jobs 全部成功，CI run `33249498526` 六项 required checks 全部成功；signed commits `d20d01228e8305314025c0d057dc8c98db90fb22` 与 `d54a30d085d9663c03970cd66b76f5df13216b0b` 均由 GitHub 验证为 `verified=true, reason=valid`。本工作包已完成，并已通过 PR #6 以普通 merge 合入 merge commit `989cfad32aaed7352c50fb9e80233ac137362616`；其双亲、tree 与 GitHub 签名均已精确复验，merge 后 CI run `33254131004` 六项检查和 native run `33254130929` 七个 jobs 全部成功。
 - `WP-M3-LIVEGATE-SCHEMA`：docs-first schema version 1 已固定严格 18/5 JSON、封闭枚举与环境矩阵、ID/hash/time、capability transition、primary prefix/cleanup/result 和产品/runner 退出码映射，并实现 direct JSON guards 与泄漏测试；focused coverage 为 94.3%。signed implementation commit `03ffa893dce68bf83886ca047b2c9c5760a351b9` 由 GitHub 验证为 `valid`；PR #8 已以普通 merge 合入 `01e4dc59bd7787cb382e9d2392f7e6c3052a569b`，双亲为 `0aaff5da9ac691bcb56538074a0b3c178b140808` 与 `03ffa893dce68bf83886ca047b2c9c5760a351b9`，tree 为 `6fa99e2f23efa0ef2ac6d1b269b52bcda0514148`，GitHub 签名为 `valid`。merge 后 CI run `33259519538` 六项和 native run `33259519515` 七项全部成功；本地 test/race/vet/doccheck、固定 gitleaks `8.30.1` 合成 canary/28 commits 全历史/全部 refs/reflog/工作树零命中与 `git fsck --full` 均通过，fsck 仅报告四个已知 dangling tree。未实现 runner、candidate、release/tag，也未启动校园网或其他网络会话。
+- `WP-M3-LIVEGATE-RUNNER`：maintainer-only runner、冻结 candidate/manifest/hash 绑定、固定 suite 状态机与清理权、私有三文件 evidence bundle、durability 与泄漏门禁已实现。signed commits `e5528f46792f7d9d3d087b2b59196106d6856976` 与 `80462712f872519da73526927476fdad69edee32` 均由 GitHub 验证为 `valid`；PR #10 head CI run `33271001499` 六项和 native run `33271001474` 七项全部成功，并以普通 merge 合入 `6196234374f72089affd5442d0b5c2c0193cf62d`，双亲、tree `b9383072cd8c32bf1f0aafd6596b4a6c0ae86077` 与 GitHub 签名均已精确复验。merge 后 CI run `33271253178` 六项和 native run `33271253166` 七项全部成功；本地 test/race/vet/doccheck、跨平台编译、固定 gitleaks canary/全历史/工作树扫描和 `fsck` 通过。未创建 candidate/release/tag，也未启动校园网或其他真实会话。
 - Signing key 登记后，`15fb31d`、`c562483`、`5bee31b`、`f1ca77c` 与 `907b3e7` 当前均由 GitHub 验证为 `verified=true, reason=valid`；不得为追溯修正签名状态而改写历史。
 
 ## 阻塞
 
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
 - 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
-- 既有 `.github/workflows/release.yml` push 仍以零 job 即时失败；它不是当前 main required check，也非本工作包引入，但进入 `WP-M3-CANDIDATE` / promotion 前必须按发布规范诊断。
+- 既有 `.github/workflows/release.yml` push runs `33259518906` 与 `33271252579` 均以零 job 即时失败；后者精确绑定 runner merge commit。它们不是当前 main required checks，也非 runner 工作包引入，但进入 `WP-M3-CANDIDATE` 修改前必须按发布规范只读诊断。
 
 ## 下一步
 
-- 恢复并完成 `WP-M3-LIVEGATE-RUNNER` 的 manifest 绑定、合成状态机、清理权、private bundle durability 与无泄漏门禁；runner 完成后仍须先诊断既有 `.github/workflows/release.yml` 零 job 失败，才能进入 candidate/promotion。
+- 先对 release push runs `33259518906` 与 `33271252579`、当前 workflow source 和 Actions 元数据做只读诊断；确认根因、规范边界与安全修复范围后，再声明并启动 `WP-M3-CANDIDATE`。最终 tag、公开 release 和发布资产仍需另行批准。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
