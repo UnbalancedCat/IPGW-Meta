@@ -120,10 +120,12 @@ func validPrivateLinuxMetadata(stat unix.Stat_t, directory bool) bool {
 }
 
 func linuxSecurityFingerprint(stat unix.Stat_t) [sha256.Size]byte {
-	var encoded [12]byte
+	var encoded [28]byte
 	binary.LittleEndian.PutUint32(encoded[0:4], stat.Uid)
 	binary.LittleEndian.PutUint32(encoded[4:8], stat.Gid)
 	binary.LittleEndian.PutUint32(encoded[8:12], stat.Mode)
+	binary.LittleEndian.PutUint64(encoded[12:20], uint64(stat.Ctim.Sec))
+	binary.LittleEndian.PutUint64(encoded[20:28], uint64(stat.Ctim.Nsec))
 	return sha256.Sum256(encoded[:])
 }
 

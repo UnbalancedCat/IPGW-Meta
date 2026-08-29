@@ -13,6 +13,35 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+func TestSetBundleCurrentUserOnlyACLAssignsCurrentOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "owner-check")
+	if err := os.WriteFile(path, []byte("owner"), 0o600); err != nil {
+		t.Fatalf("create owner fixture: %v", err)
+	}
+	if err := setBundleCurrentUserOnlyACL(path, windows.NO_INHERITANCE); err != nil {
+		t.Fatalf("set bundle security: %v", err)
+	}
+	descriptor, err := windows.GetNamedSecurityInfo(
+		path,
+		windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION,
+	)
+	if err != nil {
+		t.Fatalf("read bundle owner: %v", err)
+	}
+	owner, defaulted, err := descriptor.Owner()
+	if err != nil || owner == nil || defaulted {
+		t.Fatalf("read explicit bundle owner: owner=%v defaulted=%v err=%v", owner, defaulted, err)
+	}
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatalf("read current user: %v", err)
+	}
+	if !owner.Equals(user.User.Sid) {
+		t.Fatal("bundle setter did not assign the current user as owner")
+	}
+}
+
 func TestEnsureBundlePrivateDirectoryConcurrentExistingPreservesACL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "shared-private")
 	if err := os.Mkdir(path, 0o700); err != nil {

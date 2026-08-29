@@ -154,6 +154,18 @@ func setPrivateTestACL(
 	if err != nil {
 		t.Fatalf("read current Windows user: %v", err)
 	}
+	descriptor, err := windows.GetNamedSecurityInfo(
+		path,
+		windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION,
+	)
+	if err != nil {
+		t.Fatalf("read private test owner: %v", err)
+	}
+	existingOwner, ownerDefaulted, err := descriptor.Owner()
+	if err != nil || existingOwner == nil {
+		t.Fatalf("read private test owner value: owner=%v defaulted=%v err=%v", existingOwner, ownerDefaulted, err)
+	}
 	entries := []windows.EXPLICIT_ACCESS{{
 		AccessPermissions: access,
 		AccessMode:        windows.GRANT_ACCESS,
@@ -168,11 +180,20 @@ func setPrivateTestACL(
 	if err != nil {
 		t.Fatalf("create private test ACL: %v", err)
 	}
+	securityInformation := windows.SECURITY_INFORMATION(
+		windows.DACL_SECURITY_INFORMATION |
+			windows.PROTECTED_DACL_SECURITY_INFORMATION,
+	)
+	var owner *windows.SID
+	if ownerDefaulted || !existingOwner.Equals(user.User.Sid) {
+		securityInformation |= windows.OWNER_SECURITY_INFORMATION
+		owner = user.User.Sid
+	}
 	if err := windows.SetNamedSecurityInfo(
 		path,
 		windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
-		nil,
+		securityInformation,
+		owner,
 		nil,
 		acl,
 		nil,

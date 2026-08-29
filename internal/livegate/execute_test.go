@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -653,6 +654,9 @@ func TestExecuteCancellationHasPriorityAndNoBundle(t *testing.T) {
 	})
 
 	t.Run("after publish commit", func(t *testing.T) {
+		if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+			t.Skip("atomic evidence publication is supported only on Linux and Windows")
+		}
 		harness := newExecuteHarness(t, PlatformWindowsAMD64, SuitePasswordCore)
 		ctx, cancel := context.WithCancel(context.Background())
 		publishedPath := ""

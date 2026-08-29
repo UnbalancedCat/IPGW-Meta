@@ -3,10 +3,59 @@
 package livegate
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
+
+func TestEnsureBundlePrivateDirectoryConcurrentCreation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "build", "live-evidence")
+	const workers = 64
+	errs := make([]error, workers)
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	wait.Add(workers)
+	for index := range errs {
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			errs[index] = ensureBundlePrivateDirectory(path)
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+
+	for index, err := range errs {
+		if err != nil {
+			t.Fatalf("ensure[%d] error = %v", index, err)
+		}
+	}
+	if err := verifyBundlePrivateDirectory(path); err != nil {
+		t.Fatalf("verify concurrently created directory: %v", err)
+	}
+}
+
+func TestEnsureBundlePrivateDirectoryExistingNonPrivateFailsWithoutRepair(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "live-evidence")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("create non-private directory: %v", err)
+	}
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("set non-private mode: %v", err)
+	}
+	if err := ensureBundlePrivateDirectory(path); !errors.Is(err, ErrEvidenceDurability) {
+		t.Fatalf("ensure non-private directory error = %v, want ErrEvidenceDurability", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat non-private directory: %v", err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("ensure rewrote existing mode to %04o", info.Mode().Perm())
+	}
+}
 
 func TestBundlePublisherRejectsSymlinkedOutputAncestor(t *testing.T) {
 	base := t.TempDir()

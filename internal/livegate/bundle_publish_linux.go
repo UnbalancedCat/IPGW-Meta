@@ -220,13 +220,17 @@ func ensureBundleLinuxDirectory(path string) (int, error) {
 		nextFD, openErr := unix.Openat(currentFD, part, bundleLinuxDirectoryFlags, 0)
 		created := false
 		if errors.Is(openErr, unix.ENOENT) {
-			if err := unix.Mkdirat(currentFD, part, 0o700); err != nil {
+			mkdirErr := unix.Mkdirat(currentFD, part, 0o700)
+			if mkdirErr == nil {
+				created = true
+			} else if !errors.Is(mkdirErr, unix.EEXIST) {
 				_ = unix.Close(currentFD)
-				return -1, err
+				return -1, mkdirErr
 			}
-			created = true
 			if err := unix.Fsync(currentFD); err != nil {
-				_ = unix.Unlinkat(currentFD, part, unix.AT_REMOVEDIR)
+				if created {
+					_ = unix.Unlinkat(currentFD, part, unix.AT_REMOVEDIR)
+				}
 				_ = unix.Close(currentFD)
 				return -1, err
 			}
@@ -237,7 +241,7 @@ func ensureBundleLinuxDirectory(path string) (int, error) {
 			return -1, openErr
 		}
 
-		if created || index == len(parts)-1 {
+		if created {
 			var metadata unix.Stat_t
 			if err := unix.Fstat(nextFD, &metadata); err != nil ||
 				metadata.Uid != uint32(os.Geteuid()) {
@@ -255,6 +259,8 @@ func ensureBundleLinuxDirectory(path string) (int, error) {
 				_ = unix.Close(currentFD)
 				return -1, err
 			}
+		}
+		if created || index == len(parts)-1 {
 			if err := verifyBundleLinuxDirectoryFD(nextFD); err != nil {
 				_ = unix.Close(nextFD)
 				_ = unix.Close(currentFD)

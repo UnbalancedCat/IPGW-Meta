@@ -174,10 +174,7 @@ func TestVerifyAfterDetectsCandidateManifestAndIdentityDrift(t *testing.T) {
 			writePrivateTestExecutableFile(t, fixture.candidate, append(fixture.candidateRaw, 'x'))
 		}},
 		{"candidate_identity", func(t *testing.T, fixture candidateTestFixture) {
-			if err := os.Remove(fixture.candidate); err != nil {
-				t.Fatalf("remove candidate: %v", err)
-			}
-			writePrivateTestExecutableFile(t, fixture.candidate, fixture.candidateRaw)
+			replacePrivateTestFileIdentity(t, fixture.candidate, fixture.candidateRaw, true)
 		}},
 		{"candidate_missing", func(t *testing.T, fixture candidateTestFixture) {
 			if err := os.Remove(fixture.candidate); err != nil {
@@ -193,10 +190,7 @@ func TestVerifyAfterDetectsCandidateManifestAndIdentityDrift(t *testing.T) {
 			writePrivateTestReadableFile(t, fixture.manifest, mustMarshalJSON(t, object))
 		}},
 		{"manifest_identity", func(t *testing.T, fixture candidateTestFixture) {
-			if err := os.Remove(fixture.manifest); err != nil {
-				t.Fatalf("remove manifest: %v", err)
-			}
-			writePrivateTestReadableFile(t, fixture.manifest, fixture.manifestRaw)
+			replacePrivateTestFileIdentity(t, fixture.manifest, fixture.manifestRaw, false)
 		}},
 	}
 	for _, test := range tests {
@@ -267,5 +261,39 @@ func TestVerifyCandidateBeforeRejectsNonExecutableCandidate(t *testing.T) {
 	)
 	if err != ErrCandidateSecurity {
 		t.Fatalf("error = %v, want fixed ErrCandidateSecurity", err)
+	}
+}
+
+func replacePrivateTestFileIdentity(t *testing.T, path string, data []byte, executable bool) {
+	t.Helper()
+	original, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat original identity fixture: %v", err)
+	}
+	replacement := path + ".identity-replacement"
+	t.Cleanup(func() {
+		_ = os.Remove(replacement)
+	})
+	if executable {
+		writePrivateTestExecutableFile(t, replacement, data)
+	} else {
+		writePrivateTestReadableFile(t, replacement, data)
+	}
+	replacementInfo, err := os.Stat(replacement)
+	if err != nil {
+		t.Fatalf("stat replacement identity fixture: %v", err)
+	}
+	if os.SameFile(original, replacementInfo) {
+		t.Fatal("replacement fixture unexpectedly reused the live original identity")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove original identity fixture: %v", err)
+	}
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatalf("install replacement identity fixture: %v", err)
+	}
+	final, err := os.Stat(path)
+	if err != nil || os.SameFile(original, final) {
+		t.Fatalf("replacement did not install a distinct identity: %v", err)
 	}
 }

@@ -5,6 +5,8 @@ package livegate
 import (
 	"os"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func preparePrivateTestDirectory(t *testing.T, path string) {
@@ -33,6 +35,21 @@ func writePrivateTestExecutableFile(t *testing.T, path string, data []byte) {
 	}
 	if err := os.Chmod(path, 0o700); err != nil {
 		t.Fatalf("protect private executable test file: %v", err)
+	}
+}
+
+func TestLinuxSecurityFingerprintIncludesChangeTime(t *testing.T) {
+	original := unix.Stat_t{
+		Uid:  1000,
+		Gid:  1000,
+		Mode: uint32(unix.S_IFREG | 0o600),
+		Ctim: unix.Timespec{Sec: 123, Nsec: 456},
+	}
+	changed := original
+	changed.Ctim.Nsec++
+
+	if linuxSecurityFingerprint(original) == linuxSecurityFingerprint(changed) {
+		t.Fatal("Linux private-file fingerprint ignored ctime drift")
 	}
 }
 
