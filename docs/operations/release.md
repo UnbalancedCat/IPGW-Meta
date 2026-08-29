@@ -90,6 +90,8 @@ release notes 必须列出 legacy/meta 默认策略、配置迁移方式、Termi
 
 Candidate ID 为 `v1.0.0-<SOURCE_SHA12>-<RUN_ID>.<RUN_ATTEMPT>`。单一 GitHub artifact 的根 manifest 必须分列公开 `release_assets` 和私有 `test_tools`，并绑定 plan/revision、version、candidate ID、source commit/tree、Go/toolchain、build-input digest 及每个文件的名称、平台、大小和 SHA-256。
 
+完整 candidate manifest 必须包含 [`REL-LIVEGATE-001`](live-validation.md#rel-livegate-001runner-接口与信任边界) 冻结的 candidate-manifest v1 runner projection。`candidate_set_sha256` 即 candidate manifest 精确原始字节的 SHA-256 小写十六进制；full schema 的其余字段与生成规则由 `WP-M3-CANDIDATE` 冻结和生成，任何新增字段都不得改变 runner projection 的字段类型、语义、target 顺序或 binary 绑定。
+
 workflow 记录 artifact ID、artifact digest、run ID/attempt，并为 candidate-set 和每个公开 release asset 生成 GitHub provenance attestation。本地只读副本不能替代 GitHub artifact；artifact 不可用、attestation 无法验证、hash 不符或构建输入变化时，候选失效，所有真实测试必须对新候选重做。
 
 ## REL-PROMOTION-001：Promotion lock 与原样发布
