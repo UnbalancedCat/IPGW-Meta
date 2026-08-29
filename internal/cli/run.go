@@ -26,10 +26,28 @@ func Execute(ctx context.Context, options Options) int {
 		return render.failure("cli", invalidArgument(err))
 	}
 	render.mode = globals.output
+	version := options.Version
+	if version == "" {
+		version = "dev"
+	}
+	if globals.version {
+		if len(args) != 0 {
+			return render.failure("version", invalidArgument(fmt.Errorf("--version does not take positional arguments")))
+		}
+		return (commandRuntime{render: render, version: version}).runVersion()
+	}
 	if options.NewGateway == nil {
 		return render.failure("cli", internalError("gateway factory is unavailable"))
 	}
-	paths := config.WithConfigPath(options.Paths, globals.configPath)
+	paths := options.Paths
+	if options.ResolvePaths != nil {
+		resolved, resolveErr := options.ResolvePaths()
+		if resolveErr != nil {
+			return StartupFailure(options.Args, options.Out, options.Err, resolveErr)
+		}
+		paths = resolved
+	}
+	paths = config.WithConfigPath(paths, globals.configPath)
 	providerOptions := config.ProviderOptions{}
 	if options.ProviderOptions != nil {
 		providerOptions = *options.ProviderOptions
@@ -42,10 +60,6 @@ func Execute(ctx context.Context, options Options) int {
 	}
 	if providerOptions.Output == nil {
 		providerOptions.Output = options.Err
-	}
-	version := options.Version
-	if version == "" {
-		version = "dev"
 	}
 	runtime := commandRuntime{
 		gateway: options.NewGateway(paths),
@@ -150,7 +164,7 @@ func normalizeMetaLoginArgs(args []string) ([]string, error) {
 }
 
 func (r commandRuntime) printMetaCommandHelp() {
-	_, _ = fmt.Fprintln(r.render.out, "Usage: ipgw-meta [--json|--output human|json] [--profile NAME] [--bind-ip IP] <status|login|logout|network|profile>")
+	_, _ = fmt.Fprintln(r.render.out, "Usage: ipgw-meta [--json|--output human|json] [--profile NAME] [--bind-ip IP] [--version] <status|login|logout|network|profile>")
 	_, _ = fmt.Fprintln(r.render.out, "  login [--method password|qr] [--switch]")
 	_, _ = fmt.Fprintln(r.render.out, "  network <list|scan>")
 	_, _ = fmt.Fprintln(r.render.out, "  profile <list|show|add|remove|migrate>")
@@ -233,6 +247,15 @@ func extractGlobals(args []string) (globalOptions, []string, error) {
 			}
 			options.output = outputJSON
 			outputSeen = true
+			continue
+		case "--version":
+			if inline {
+				return options, nil, fmt.Errorf("--version does not take a value")
+			}
+			if options.version {
+				return options, nil, fmt.Errorf("--version was specified more than once")
+			}
+			options.version = true
 			continue
 		case "--output":
 			if outputSeen {

@@ -1,0 +1,162 @@
+name: Native install assets
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-install-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  package:
+    name: Package one native-install asset batch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      source_tree: ${{ steps.metadata.outputs.source_tree }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Derive frozen batch metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="native-${GITHUB_SHA:0:12}"
+          source_tree=$(git rev-parse 'HEAD^{tree}')
+          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
+          printf 'source_tree=%s\n' "$source_tree" >>"$GITHUB_OUTPUT"
+          printf '%s\n' "$version" >"$RUNNER_TEMP/ipgw-native-version"
+      - name: Build and package all six targets once
+        env:
+          RELEASE_VERSION_FILE: ${{ runner.temp }}/ipgw-native-version
+        run: make package BUILD_DIR=build/native-install RELEASE_DIR=release
+      - name: Verify release-shaped batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$(printf '%s\n' \
+            SHA256SUMS \
+            install.ps1 \
+            install.sh \
+            ipgw-meta-darwin-amd64.tar.gz \
+            ipgw-meta-darwin-arm64.tar.gz \
+            ipgw-meta-linux-amd64.tar.gz \
+            ipgw-meta-linux-arm64.tar.gz \
+            ipgw-meta-windows-amd64.zip \
+            ipgw-meta-windows-arm64.zip)
+          actual=$(find release -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
+          test "$actual" = "$expected"
+          for name in $expected; do
+            test -f "release/$name"
+            test ! -L "release/$name"
+          done
+          test "$(wc -l <release/SHA256SUMS)" -eq 8
+          (
+            cd release
+            sha256sum --check SHA256SUMS
+          )
+          bash -n release/install.sh
+          release_sums_sha=$(sha256sum release/SHA256SUMS | awk '{print $1}')
+          jq -n \
+            --arg source_commit "$GITHUB_SHA" \
+            --arg source_tree "${{ steps.metadata.outputs.source_tree }}" \
+            --arg version "${{ steps.metadata.outputs.version }}" \
+            --arg release_sums_sha "$release_sums_sha" \
+            '{
+              schema_version: 1,
+              artifact_kind: "ipgw-native-install-v1",
+              source_commit: $source_commit,
+              source_tree: $source_tree,
+              version: $version,
+              release_sha256sums_sha256: $release_sums_sha
+            }' >native-install-manifest.json
+      - name: Upload immutable native-install batch
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-install-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-install-manifest.json
+            release
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  native-install:
+    name: Native install (${{ matrix.target }}, ${{ matrix.test_mode }})
+    needs: package
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-amd64
+            test_mode: full
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+            test_mode: smoke
+          - os: windows-2022
+            target: windows-amd64
+            test_mode: full
+          - os: windows-11-arm
+            target: windows-arm64
+            test_mode: smoke
+          - os: macos-15-intel
+            target: darwin-amd64
+            test_mode: smoke
+          - os: macos-15
+            target: darwin-arm64
+            test_mode: full
+    runs-on: ${{ matrix.os }}
+    env:
+      IPGW_NATIVE_INSTALL_REQUIRED: "1"
+      IPGW_NATIVE_INSTALL_VERSION: ${{ needs.package.outputs.version }}
+      IPGW_NATIVE_INSTALL_SOURCE_COMMIT: ${{ github.sha }}
+      IPGW_NATIVE_INSTALL_SOURCE_TREE: ${{ needs.package.outputs.source_tree }}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download immutable native-install artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/ipgw-native-install
+      - name: Run release-asset smoke
+        if: matrix.test_mode == 'smoke'
+        env:
+          IPGW_NATIVE_INSTALL_ARTIFACT_ROOT: ${{ runner.temp }}/ipgw-native-install
+        run: go test -count=1 -run '^TestNativeReleaseAssetSmoke$' ./internal/installtest
+      - name: Run release-asset and complete failure matrix
+        if: matrix.test_mode == 'full'
+        env:
+          IPGW_NATIVE_INSTALL_ARTIFACT_ROOT: ${{ runner.temp }}/ipgw-native-install
+        run: go test -count=1 ./internal/installtest

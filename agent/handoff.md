@@ -11,10 +11,10 @@ snapshot_at: 2026-08-29
 
 ## 当前执行
 
-- 执行者：无（`WP-M2-INSTALL-WINDOWS` 完成后的安全停点）。
-- 工作包：`WP-M2-INSTALL-WINDOWS`（`complete`）；下一工作包为 `WP-M2-INSTALL-NATIVE`（未开始）。
-- 修改边界：本窗口仅修改 `install.ps1`、Windows 安装器测试以及本文件与正式状态的最小事实更新；未修改 Unix 安装器、workflow、release script、发布资产或真实安装目标，未接触校园网会话、隔离工作区、敏感备份或 rewrite mirror，也未执行 force-push、创建 release/tag/资产。
-- 停止条件：进入下一工作包前重新读取原生安装与发布规范，并重新核对 `origin/main`、PR/refs、rulesets、签名和工作树。`WP-M2-INSTALL-NATIVE` 只能测试同一冻结实现版本的六平台公开 release asset；若需要创建 release/tag/资产、修改 workflow 或接触真实校园网会话，则立即停止并重新取得对应授权。
+- 执行者：Codex。
+- 工作包：`WP-M2-INSTALL-NATIVE`（`in_progress`）。
+- 修改边界：修改原生安装 Actions 矩阵、其测试 harness、原生门禁发现的三入口 `--version` 契约内最小修复与对应 CLI 规范/测试，以及本文件与正式状态的最小事实更新；六个平台必须下载同一打包 job 产生的 release-shaped artifact。不得修改 Unix/Windows 安装器、既有 release workflow/script、main/tag ruleset，不得创建 release/tag/发布资产，也不得接触真实安装目标、校园网会话、隔离工作区、敏感备份或 rewrite mirror。
+- 停止条件：任一远端 ref/SHA、ruleset、签名或工作树漂移；任一规范 runner 标签不可用；artifact hash/成员不一致；需要在原生 runner 重建或重打包；需要修改安装器、既有 release workflow/script 或规则保护；需要创建 release/tag/发布资产、force-push 或接触真实校园网会话时立即停止。只有六平台 fresh/upgrade/三入口/launcher/基础 rollback 和三代表平台完整故障矩阵全部通过，才能完成本工作包。
 
 ## 已完成
 
@@ -42,5 +42,5 @@ snapshot_at: 2026-08-29
 
 ## 下一步
 
-- 在 Unix 与 Windows 安装器实现冻结并合入受保护 `main` 后执行 `WP-M2-INSTALL-NATIVE`；按 [`REL-INSTALL-003`](../docs/operations/offline-install.md#rel-install-003事务回滚与失败注入) 对同一公开 release asset 完成六平台 fresh/upgrade/三入口/launcher/基础 rollback smoke，并在 Linux amd64、Windows amd64 与 macOS arm64 完成代表平台完整故障矩阵。不得在远端重建、重打包或以交叉编译替代原生 runner。
+- 将当前 `WP-M2-INSTALL-NATIVE` 实现创建签名提交并推送 `codex/v1-m2-install-native`，建立 PR 后等待一个打包 job 的同一 release-shaped artifact 在六个官方原生 runner 完成 smoke/full 矩阵；任一原生 runner 不可用或任一矩阵失败时保持 `in_progress` 并停止，不得在 runner 侧重建、重打包或以交叉编译替代。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。

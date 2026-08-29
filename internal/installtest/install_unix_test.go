@@ -32,6 +32,7 @@ type unixFixture struct {
 	install   string
 	bin       string
 	stubDir   string
+	tempDir   string
 	tokenFile string
 }
 
@@ -59,9 +60,10 @@ func newUnixFixture(t *testing.T) *unixFixture {
 		install:   filepath.Join(root, "install"),
 		bin:       filepath.Join(root, "bin"),
 		stubDir:   filepath.Join(root, "stub-bin"),
+		tempDir:   filepath.Join(root, "tmp"),
 		tokenFile: filepath.Join(root, ".ipgw-install-test-token"),
 	}
-	for _, dir := range []string{f.home, f.stubDir} {
+	for _, dir := range []string{f.home, f.stubDir, f.tempDir} {
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatalf("create fixture directory %s: %v", dir, err)
 		}
@@ -97,39 +99,29 @@ func findRepoRoot(t *testing.T) string {
 }
 
 func (f *unixFixture) environment(overrides map[string]string) []string {
-	dropped := map[string]bool{
-		"HOME":                                 true,
-		"PATH":                                 true,
-		"XDG_CONFIG_HOME":                      true,
-		"IPGW_VERSION":                         true,
-		"IPGW_INSTALL_ROOT":                    true,
-		"IPGW_BIN_DIR":                         true,
-		"IPGW_INSTALL_TEST_ROOT":               true,
-		"IPGW_INSTALL_TEST_TOKEN":              true,
-		"IPGW_INSTALL_TEST_FAILPOINT":          true,
-		"IPGW_INSTALL_TEST_ROLLBACK_FAILPOINT": true,
-	}
-	env := make([]string, 0, len(os.Environ())+8)
-	for _, item := range os.Environ() {
-		name, _, _ := strings.Cut(item, "=")
-		if !dropped[name] {
-			env = append(env, item)
-		}
-	}
 	values := map[string]string{
 		"HOME":                    f.home,
 		"PATH":                    f.stubDir + ":/usr/bin:/bin:/usr/sbin:/sbin",
 		"XDG_CONFIG_HOME":         f.config,
+		"TMPDIR":                  f.tempDir,
+		"LC_ALL":                  "C",
+		"HTTP_PROXY":              "http://127.0.0.1:1",
+		"HTTPS_PROXY":             "http://127.0.0.1:1",
+		"ALL_PROXY":               "http://127.0.0.1:1",
+		"http_proxy":              "http://127.0.0.1:1",
+		"https_proxy":             "http://127.0.0.1:1",
+		"all_proxy":               "http://127.0.0.1:1",
+		"NO_PROXY":                "",
+		"no_proxy":                "",
 		"IPGW_INSTALL_TEST_ROOT":  f.root,
 		"IPGW_INSTALL_TEST_TOKEN": testToken,
 	}
 	for name, value := range overrides {
 		values[name] = value
 	}
+	env := make([]string, 0, len(values))
 	for name, value := range values {
-		if value != "" {
-			env = append(env, name+"="+value)
-		}
+		env = append(env, name+"="+value)
 	}
 	return env
 }
@@ -168,7 +160,7 @@ func buildBundle(t *testing.T, root, version, extraName string) testBundle {
 	contents := make(map[string][]byte)
 	for _, name := range entryNames {
 		contents[name] = []byte(fmt.Sprintf(
-			"#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf '%%s\\n' '%s'; exit 0; fi\nprintf '%%s\\n' '%s %s'\n",
+			"#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf 'IPGW-Meta %%s\\n' '%s'; exit 0; fi\nprintf '%%s\\n' '%s %s'\n",
 			version, name, version,
 		))
 	}
@@ -260,6 +252,141 @@ func hashBytes(value []byte) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
+func unixUpgradeBundle(t *testing.T, f *unixFixture, fallbackVersion string) testBundle {
+	t.Helper()
+	if !nativeInstallArtifactConfigured() {
+		return buildBundle(t, f.root, fallbackVersion, "")
+	}
+	asset := prepareNativeInstallAsset(t, f.root)
+	f.script = asset.installerPath
+	return testBundle{path: asset.bundlePath, sha256: asset.bundleSHA256, version: asset.version}
+}
+
+func unixRejectionBundle(t *testing.T, f *unixFixture, extraName string) testBundle {
+	t.Helper()
+	version := "v1.0.0"
+	if nativeInstallArtifactConfigured() {
+		asset := prepareNativeInstallAsset(t, f.root)
+		f.script = asset.installerPath
+		version = asset.version
+	}
+	return buildBundle(t, f.root, version, extraName)
+}
+
+func writeUnixLegacyLauncherSentinel(t *testing.T, f *unixFixture) []byte {
+	t.Helper()
+	path := filepath.Join(f.config, "ipgw-meta", "launcher.yaml")
+	content := []byte("schema_version: 1\nmode: legacy\ncohort: native-preserve-test\n")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write non-default launcher sentinel: %v", err)
+	}
+	assertMode(t, path, 0o600)
+	return mustReadFile(t, path)
+}
+
+func unixVersionEntries(t *testing.T, f *unixFixture) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(f.install, "versions"))
+	if err != nil {
+		t.Fatalf("read installed version entries: %v", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
+}
+
+func assertUnixVersionEntries(t *testing.T, f *unixFixture, want []string) {
+	t.Helper()
+	got := unixVersionEntries(t, f)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("installed version entries changed across rollback: got %v, want %v", got, want)
+	}
+}
+
+func TestNativeReleaseAssetSmoke(t *testing.T) {
+	if !nativeInstallArtifactConfigured() {
+		if nativeInstallArtifactRequired() {
+			t.Fatal("native install artifact is required but not configured")
+		}
+		t.Skip("native install artifact is not configured")
+	}
+
+	t.Run("fresh install and launcher default", func(t *testing.T) {
+		f := newUnixFixture(t)
+		asset := prepareNativeInstallAsset(t, f.root)
+		t.Log(nativeAssetDescription(asset))
+		f.script = asset.installerPath
+		candidate := testBundle{path: asset.bundlePath, sha256: asset.bundleSHA256, version: asset.version}
+		if output, err := f.installBundle(t, candidate, "", ""); err != nil {
+			t.Fatalf("fresh native release-asset install failed: %v\n%s", err, output)
+		}
+		assertInstalledVersion(t, f, candidate.version)
+		assertInstalledModes(t, f)
+		launcher := mustReadFile(t, filepath.Join(f.config, "ipgw-meta", "launcher.yaml"))
+		assertFreshLauncherState(t, launcher)
+		assertNoTransactionArtifacts(t, f)
+		if _, err := os.Stat(filepath.Join(f.root, "curl-called")); !os.IsNotExist(err) {
+			t.Fatal("native release-asset offline install invoked the curl tripwire")
+		}
+	})
+
+	t.Run("upgrade preserves launcher", func(t *testing.T) {
+		f := newUnixFixture(t)
+		baseline := buildBundle(t, f.root, "native-baseline", "")
+		if output, err := f.installBundle(t, baseline, "", ""); err != nil {
+			t.Fatalf("prepare native upgrade baseline: %v\n%s", err, output)
+		}
+		oldActive := mustReadlink(t, filepath.Join(f.install, "active"))
+		launcherBefore := writeUnixLegacyLauncherSentinel(t, f)
+		candidate := unixUpgradeBundle(t, f, "unused")
+		if candidate.version == baseline.version {
+			t.Fatal("native candidate version must differ from the upgrade baseline")
+		}
+		if output, err := f.installBundle(t, candidate, "", ""); err != nil {
+			t.Fatalf("native release-asset upgrade failed: %v\n%s", err, output)
+		}
+		assertInstalledVersion(t, f, candidate.version)
+		if active := mustReadlink(t, filepath.Join(f.install, "active")); active == oldActive {
+			t.Fatal("native release-asset upgrade did not switch active atomically")
+		}
+		launcherAfter := mustReadFile(t, filepath.Join(f.config, "ipgw-meta", "launcher.yaml"))
+		if string(launcherAfter) != string(launcherBefore) {
+			t.Fatal("native release-asset upgrade changed launcher selection")
+		}
+		assertNoTransactionArtifacts(t, f)
+	})
+
+	t.Run("basic rollback restores baseline", func(t *testing.T) {
+		f := newUnixFixture(t)
+		baseline := buildBundle(t, f.root, "native-baseline", "")
+		if output, err := f.installBundle(t, baseline, "", ""); err != nil {
+			t.Fatalf("prepare native rollback baseline: %v\n%s", err, output)
+		}
+		oldActive := mustReadlink(t, filepath.Join(f.install, "active"))
+		oldLauncher := writeUnixLegacyLauncherSentinel(t, f)
+		oldVersions := unixVersionEntries(t, f)
+		candidate := unixUpgradeBundle(t, f, "unused")
+		output, err := f.installBundle(t, candidate, "before_commit", "")
+		if err == nil {
+			t.Fatalf("native release-asset rollback probe unexpectedly committed:\n%s", output)
+		}
+		if !strings.Contains(output, "installer test failpoint triggered: before_commit") {
+			t.Fatalf("native rollback did not reach before_commit failpoint:\n%s", output)
+		}
+		if active := mustReadlink(t, filepath.Join(f.install, "active")); active != oldActive {
+			t.Fatal("native release-asset rollback did not restore active")
+		}
+		if launcher := mustReadFile(t, filepath.Join(f.config, "ipgw-meta", "launcher.yaml")); string(launcher) != string(oldLauncher) {
+			t.Fatal("native release-asset rollback changed launcher selection")
+		}
+		assertInstalledVersion(t, f, baseline.version)
+		assertUnixVersionEntries(t, f, oldVersions)
+		assertNoTransactionArtifacts(t, f)
+	})
+}
+
 func TestOfflineFreshInstallAndUpgrade(t *testing.T) {
 	f := newUnixFixture(t)
 	v1 := buildBundle(t, f.root, "v1.0.0", "")
@@ -268,17 +395,16 @@ func TestOfflineFreshInstallAndUpgrade(t *testing.T) {
 	}
 	assertInstalledVersion(t, f, v1.version)
 	assertInstalledModes(t, f)
-	launcherBefore := mustReadFile(t, filepath.Join(f.config, "ipgw-meta", "launcher.yaml"))
-	if !strings.Contains(string(launcherBefore), "mode: meta\ncohort: new-install\n") {
-		t.Fatalf("fresh launcher does not use the specified default:\n%s", launcherBefore)
-	}
+	launcherDefault := mustReadFile(t, filepath.Join(f.config, "ipgw-meta", "launcher.yaml"))
+	assertFreshLauncherState(t, launcherDefault)
+	launcherBefore := writeUnixLegacyLauncherSentinel(t, f)
 	assertNoTransactionArtifacts(t, f)
 	if _, err := os.Stat(filepath.Join(f.root, "curl-called")); !os.IsNotExist(err) {
 		t.Fatal("offline install invoked the curl tripwire")
 	}
 
 	oldActive := mustReadlink(t, filepath.Join(f.install, "active"))
-	v2 := buildBundle(t, f.root, "v1.1.0", "")
+	v2 := unixUpgradeBundle(t, f, "v1.1.0")
 	if output, err := f.installBundle(t, v2, "", ""); err != nil {
 		t.Fatalf("offline upgrade failed: %v\n%s", err, output)
 	}
@@ -313,10 +439,15 @@ func TestForwardFailpointsRestorePreviousInstall(t *testing.T) {
 				t.Fatalf("prepare previous install: %v\n%s", err, output)
 			}
 			oldActive := mustReadlink(t, filepath.Join(f.install, "active"))
-			oldLauncher := mustReadFile(t, filepath.Join(f.config, "ipgw-meta", "launcher.yaml"))
-			v2 := buildBundle(t, f.root, "v1.1.0", "")
-			if output, err := f.installBundle(t, v2, point, ""); err == nil {
+			oldLauncher := writeUnixLegacyLauncherSentinel(t, f)
+			oldVersions := unixVersionEntries(t, f)
+			v2 := unixUpgradeBundle(t, f, "v1.1.0")
+			output, err := f.installBundle(t, v2, point, "")
+			if err == nil {
 				t.Fatalf("failpoint %s unexpectedly committed:\n%s", point, output)
+			}
+			if !strings.Contains(output, "installer test failpoint triggered: "+point) {
+				t.Fatalf("installer did not reach failpoint %s:\n%s", point, output)
 			}
 			if active := mustReadlink(t, filepath.Join(f.install, "active")); active != oldActive {
 				t.Fatalf("failpoint %s did not restore the previous active link", point)
@@ -325,6 +456,7 @@ func TestForwardFailpointsRestorePreviousInstall(t *testing.T) {
 				t.Fatalf("failpoint %s changed the launcher selection", point)
 			}
 			assertInstalledVersion(t, f, v1.version)
+			assertUnixVersionEntries(t, f, oldVersions)
 			assertNoTransactionArtifacts(t, f)
 		})
 	}
@@ -332,12 +464,12 @@ func TestForwardFailpointsRestorePreviousInstall(t *testing.T) {
 
 func TestRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 	tests := []struct {
-		point           string
-		expectedVersion string
+		point     string
+		expectNew bool
 	}{
-		{point: "before_restore_entry_1", expectedVersion: "v1.1.0"},
-		{point: "before_restore_active", expectedVersion: "v1.1.0"},
-		{point: "before_remove_new_version", expectedVersion: "v1.0.0"},
+		{point: "before_restore_entry_1", expectNew: true},
+		{point: "before_restore_active", expectNew: true},
+		{point: "before_remove_new_version", expectNew: false},
 	}
 	for _, test := range tests {
 		t.Run(test.point, func(t *testing.T) {
@@ -346,7 +478,7 @@ func TestRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 			if output, err := f.installBundle(t, v1, "", ""); err != nil {
 				t.Fatalf("prepare previous install: %v\n%s", err, output)
 			}
-			v2 := buildBundle(t, f.root, "v1.1.0", "")
+			v2 := unixUpgradeBundle(t, f, "v1.1.0")
 			output, err := f.installBundle(t, v2, "before_commit", test.point)
 			if err == nil {
 				t.Fatalf("rollback failpoint %s unexpectedly committed:\n%s", test.point, output)
@@ -354,7 +486,15 @@ func TestRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 			if !strings.Contains(output, "recovery materials remain") {
 				t.Fatalf("rollback failpoint did not report preserved recovery materials:\n%s", output)
 			}
-			assertInstalledVersion(t, f, test.expectedVersion)
+			if !strings.Contains(output, "installer test failpoint triggered: before_commit") ||
+				!strings.Contains(output, "installer rollback failpoint triggered: "+test.point) {
+				t.Fatalf("installer did not reach the requested forward and rollback failpoints:\n%s", output)
+			}
+			expectedVersion := v1.version
+			if test.expectNew {
+				expectedVersion = v2.version
+			}
+			assertInstalledVersion(t, f, expectedVersion)
 			assertRecoveryArtifacts(t, f)
 		})
 	}
@@ -363,7 +503,7 @@ func TestRollbackFailpointsPreserveRecoveryMaterials(t *testing.T) {
 func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 	t.Run("missing checksum has no target side effects", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "")
+		bundle := unixRejectionBundle(t, f, "")
 		output, err := f.run(t, []string{
 			"--bundle", bundle.path,
 			"--version", bundle.version,
@@ -378,7 +518,7 @@ func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 
 	t.Run("wrong outer checksum", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "")
+		bundle := unixRejectionBundle(t, f, "")
 		bundle.sha256 = strings.Repeat("0", 64)
 		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
 			t.Fatalf("wrong outer checksum unexpectedly succeeded:\n%s", output)
@@ -388,7 +528,7 @@ func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 
 	t.Run("group writable source", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "")
+		bundle := unixRejectionBundle(t, f, "")
 		if err := os.Chmod(bundle.path, 0o660); err != nil {
 			t.Fatalf("make source group writable: %v", err)
 		}
@@ -398,9 +538,21 @@ func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 		assertTargetsAbsent(t, f)
 	})
 
+	t.Run("world writable source", func(t *testing.T) {
+		f := newUnixFixture(t)
+		bundle := unixRejectionBundle(t, f, "")
+		if err := os.Chmod(bundle.path, 0o606); err != nil {
+			t.Fatalf("make source world writable: %v", err)
+		}
+		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
+			t.Fatalf("world-writable source unexpectedly succeeded:\n%s", output)
+		}
+		assertTargetsAbsent(t, f)
+	})
+
 	t.Run("symbolic link source", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "")
+		bundle := unixRejectionBundle(t, f, "")
 		linkPath := filepath.Join(f.root, "bundle-link.tar.gz")
 		if err := os.Symlink(bundle.path, linkPath); err != nil {
 			t.Fatalf("create source symlink: %v", err)
@@ -412,9 +564,31 @@ func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 		assertTargetsAbsent(t, f)
 	})
 
+	t.Run("symbolic link source ancestor", func(t *testing.T) {
+		f := newUnixFixture(t)
+		bundle := unixRejectionBundle(t, f, "")
+		realParent := filepath.Join(f.root, "source-real")
+		if err := os.Mkdir(realParent, 0o700); err != nil {
+			t.Fatalf("create real source directory: %v", err)
+		}
+		realBundle := filepath.Join(realParent, filepath.Base(bundle.path))
+		if err := os.Rename(bundle.path, realBundle); err != nil {
+			t.Fatalf("move source behind symlink: %v", err)
+		}
+		linkParent := filepath.Join(f.root, "source-link")
+		if err := os.Symlink(realParent, linkParent); err != nil {
+			t.Fatalf("create source ancestor symlink: %v", err)
+		}
+		bundle.path = filepath.Join(linkParent, filepath.Base(realBundle))
+		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
+			t.Fatalf("symbolic-link source ancestor unexpectedly succeeded:\n%s", output)
+		}
+		assertTargetsAbsent(t, f)
+	})
+
 	t.Run("overlapping targets", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "")
+		bundle := unixRejectionBundle(t, f, "")
 		overlapBin := filepath.Join(f.install, "bin")
 		output, err := f.run(t, []string{
 			"--bundle", bundle.path,
@@ -431,7 +605,7 @@ func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 
 	t.Run("symbolic link target ancestor", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "")
+		bundle := unixRejectionBundle(t, f, "")
 		realParent := filepath.Join(f.root, "redirect")
 		if err := os.Mkdir(realParent, 0o700); err != nil {
 			t.Fatalf("create redirect target: %v", err)
@@ -458,7 +632,7 @@ func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 
 	t.Run("test token mismatch", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "")
+		bundle := unixRejectionBundle(t, f, "")
 		output, err := f.installBundleWithOverrides(t, bundle, map[string]string{
 			"IPGW_INSTALL_TEST_TOKEN": "wrong-token",
 		})
@@ -470,7 +644,7 @@ func TestOfflineInputPathAndPermissionRejections(t *testing.T) {
 
 	t.Run("unexpected archive member", func(t *testing.T) {
 		f := newUnixFixture(t)
-		bundle := buildBundle(t, f.root, "v1.0.0", "unexpected-member")
+		bundle := unixRejectionBundle(t, f, "unexpected-member")
 		if output, err := f.installBundle(t, bundle, "", ""); err == nil {
 			t.Fatalf("archive with an extra member unexpectedly succeeded:\n%s", output)
 		}
@@ -497,12 +671,15 @@ func assertInstalledVersion(t *testing.T, f *unixFixture, version string) {
 			t.Fatalf("entry %s is not a published symbolic link: info=%v err=%v", name, info, err)
 		}
 		cmd := exec.Command(path, "--version")
+		cmd.Dir = f.root
+		cmd.Env = f.environment(nil)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("run %s --version: %v\n%s", name, err, output)
 		}
-		if strings.TrimSpace(string(output)) != version {
-			t.Fatalf("entry %s reports %q, want %q", name, strings.TrimSpace(string(output)), version)
+		expected := "IPGW-Meta " + version
+		if strings.TrimSpace(string(output)) != expected {
+			t.Fatalf("entry %s reports %q, want %q", name, strings.TrimSpace(string(output)), expected)
 		}
 	}
 }

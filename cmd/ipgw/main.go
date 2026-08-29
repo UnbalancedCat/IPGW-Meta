@@ -15,6 +15,7 @@ func main() {
 	os.Exit(launcher.Execute(launcher.Options{
 		Args:           os.Args[1:],
 		InstallDefault: installDefault,
+		Version:        version,
 		Stdin:          os.Stdin,
 		Stdout:         os.Stdout,
 		Stderr:         os.Stderr,

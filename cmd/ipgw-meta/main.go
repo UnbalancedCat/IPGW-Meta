@@ -14,14 +14,10 @@ import (
 var version = "dev"
 
 func main() {
-	paths, err := config.DefaultPaths()
-	if err != nil {
-		os.Exit(cli.StartupFailure(os.Args[1:], os.Stdout, os.Stderr, err))
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	exit := cli.Execute(ctx, cli.Options{
-		Mode: cli.ModeMeta, Args: os.Args[1:], Paths: paths,
+		Mode: cli.ModeMeta, Args: os.Args[1:], ResolvePaths: config.DefaultPaths,
 		NewGateway: func(paths config.Paths) cli.Gateway { return app.New(paths, os.Stdin, os.Stderr) },
 		Input:      os.Stdin, Out: os.Stdout, Err: os.Stderr, IsTTY: cli.IsSafeTerminal(os.Stdin, os.Stderr), Version: version,
 	})
