@@ -66,7 +66,16 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 - 两类合成旧来源现同时验证 backup 固定写入 `BaseDir/migration-backups/`、名称精确为 `<source-kind>-<transaction-id>-<ordinal>.backup` 且完整保留原字节；Windows 原生 runner 验证受保护当前用户 DACL，Ubuntu 与 macOS 原生 runner 验证目录 `0700`、文件 `0600`。
 - 合成 keyring backend 现覆盖“写入后返回错误”的补偿删除，以及补偿删除失败时 journal/backup 保留、错误脱敏和后续恢复重试；未调用真实系统 keyring 或接触真实凭据。
 - PR #3 首轮 CI run `33224027909` 的六项 required checks 全部成功；本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check`、`internal/config` 六目标测试编译、固定 gitleaks `8.30.1` 合成 canary/15 commits 历史/精确 source tree 扫描及 `git fsck --full` 均通过，临时工具、cache、构建与扫描目录已清理。
-- `WP-M2-CONFIG-CLOSE` 完成；M2 仍因 Unix/Windows 安装器与原生安装矩阵未完成而保持 `in_progress`，下一工作包为 `WP-M2-INSTALL-UNIX`。
+- `WP-M2-CONFIG-CLOSE` 完成；M2 仍因安装器与原生安装矩阵未完成而保持 `in_progress`，后续工作包从 `WP-M2-INSTALL-UNIX` 继续。
+
+## 2026-08-29 Unix 离线安装器收敛核验
+
+- `WP-M2-INSTALL-UNIX` 已实现规范固定的 `--bundle`/`--bundle-sha256` 成对接口；离线来源必须为绝对、本地、非 symlink、`1..100 MiB` 且不可 group/world writable 的普通文件。安装器只从已打开的来源句柄复制到本轮私有 acquisition 目录，再对私有副本核对调用方 SHA-256；离线路径不初始化或调用下载器。
+- 在线与离线 acquisition 后共用外层哈希、精确七成员名称/类型/大小、总量和压缩比限制、私有 bounded extraction、内部 `SHA256SUMS`、canonical manifest 与事务激活链。install root、bin dir 与 launcher dir 均执行绝对非根、不重叠和逐祖先无 symlink 校验；新建正式目录、version/binary/metadata 与私有 stage/backup/journal 使用规范模式。
+- 激活事务现按已验证 version 发布、旧 active 分离、新 active 切换、三入口、launcher、PATH phase 和 commit 顺序写入受限 journal；失败时逆序恢复，无法安全恢复或命中 rollback failpoint 时保留 recovery materials 并 fail closed。测试控制仍只接受规范列出的四个变量，且仅在离线、当前用户私有测试根、精确 token 和全部输入/目标严格位于测试根时生效。
+- Unix 测试覆盖 fresh install、upgrade、三入口 `--version`、launcher 默认/保持、公开与私有权限、离线无网络、输入/路径/归档拒绝、9 个固定前向 failpoint 及 3 个固定 rollback failpoint。WSL Ubuntu 本地完整矩阵通过；PR #4 implementation head `5dfe60ea152e4fd23677fe8cc18f4e2b59e151f5` 的 CI run `33227444605` 在 Ubuntu 与 macOS 原生执行上述测试，并与 Windows 全仓测试、race、vet/doccheck/secrets 和六目标 cross-build 一并六项成功。
+- 本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check`、Git Bash 语法、Linux/macOS 两架构测试编译、固定 gitleaks `8.30.1` canary/全历史/reflog/工作树扫描及 `git fsck --full` 均通过；`fsck` 仅报告三个既有 dangling tree。
+- `WP-M2-INSTALL-UNIX` 完成；合成 bundle 的原生 runner 测试不等于公开 release asset 的六平台 smoke，因此 M2 继续保持 `in_progress`，下一工作包为 `WP-M2-INSTALL-WINDOWS`，之后仍需 `WP-M2-INSTALL-NATIVE`。
 
 ## 2026-08-27 本地验收结果
 
@@ -78,12 +87,12 @@ M1 的本地实现与自动化门禁已完成。M2 仍保持 `in_progress`，直
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- 仓库治理、只读 baseline 与 `WP-M2-CONFIG-CLOSE` 已完成；下一工作包为 `WP-M2-INSTALL-UNIX`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
-- 尚未完成 Windows/Linux/macOS 的实际安装、升级、回滚 smoke test；macOS trusted `/var` 锚点已在原生 CI 实跑，Linux 的相同 no-follow opener 已通过 WSL 实跑，但各平台安装、完整权限与锁行为仍需对应实机验收。
+- 仓库治理、只读 baseline、`WP-M2-CONFIG-CLOSE` 与 `WP-M2-INSTALL-UNIX` 已完成；下一工作包为 `WP-M2-INSTALL-WINDOWS`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
+- 尚未完成六目标公开 release asset 的实际安装、升级、回滚 smoke test；当前 Unix 合成 bundle 已在 Ubuntu 与 macOS 原生 runner 覆盖 acquisition、路径、权限和完整固定 failpoint，但不能替代 `WP-M2-INSTALL-NATIVE` 的 release-asset 矩阵。
 - 既有 `.github/workflows/release.yml` 在 push 上仍出现无 job 的即时失败；它不是 main ruleset 的六项 required checks，也非本工作包引入，但进入 M3 candidate/promotion 前必须按发布规范诊断并关闭该门禁缺口。
 - 尚未实现并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate-set，也未完成 attestation/promotion workflow。因此 M3 保持 `not_started`，M0 未完成前继续禁止新 release。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
-- 离线安装器尚未满足 [ADR-0008](../architecture/decisions/ADR-0008-offline-transactional-installer.md) 的 acquisition、路径/权限和完整 failpoint 门禁。
+- Windows 离线安装器尚未满足 [ADR-0008](../architecture/decisions/ADR-0008-offline-transactional-installer.md) 的 acquisition、ACL/reparse 和完整 failpoint 门禁；Unix 工作包已完成，但六平台原生 release-asset 矩阵仍未执行。
 
 ## 当前已知能力限制
 
