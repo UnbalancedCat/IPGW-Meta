@@ -12,9 +12,9 @@ snapshot_at: 2026-08-30
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`LAB-DISCOVER`（ZOS 路径 `blocked`；BHK 原生 Windows fallback 匿名预检 `blocked`；`protocol_changed` 脱敏诊断契约修复 implementation `complete`，待签名提交与受保护 PR；基线为 main `b6ab8bcd2952979f6b820de1a546600094f3a247`）。
-- 修改边界：当前分支只允许保留 `agent/handoff.md`、`docs/reference/go-sdk.md`、`status.go`、`sdk_test.go` 与 `internal/cli/execute_test.go` 五项修复；不得再修改解析器、endpoint、transport、公共字段/枚举或其他产品路径。只允许签名/refs preflight、签名提交、普通分支 push、PR、严格 CI/Native 等待与普通 merge；不得运行任何有线/Wi-Fi 请求、接触凭据、运行 `network scan`/login/logout、创建 Candidate/artifact/attestation/tag/release 或进入 `LAB-PROVISION`。
-- 停止条件：任一 HEAD/origin-main/远端分支、签名配置、五文件边界、required checks/ruleset 漂移，或提交无法保持签名时立即停止。物理有线 exact-main `status` 的有效 `protocol_changed` 继续按 fail closed 处理，Wi-Fi 未执行；任何匿名协议探针或 live 重试都必须形成新的批准边界。ZOS 隔离能力仍未按 [`REL-LAB-002`](../docs/runbooks/campus-lab.md#rel-lab-002发现与供应) 证明。
+- 工作包：`LAB-DISCOVER`（ZOS 路径 `blocked`；BHK 原生 Windows fallback 的单次有线匿名 `status` 为 `protocol_changed`；脱敏诊断契约修复已合入 main `ce57f4e2474055defba00195645db363729d3533`，当前只做正式状态与交接收尾）。
+- 修改边界：当前分支只允许修改 `docs/upgrade/status.md` 与 `agent/handoff.md`，只记录已验证事实；允许签名/refs preflight、签名提交、普通分支 push、PR、严格 CI/Native 等待与普通 merge。收尾合并前不得运行新的有线/Wi-Fi 请求、修改产品代码、接触凭据、运行 `network scan`/login/logout、创建 Candidate/artifact/attestation/tag/release 或进入 `LAB-PROVISION`。
+- 停止条件：任一 HEAD/origin-main/远端分支、签名配置、两文件边界、required checks/ruleset 漂移，或提交无法保持签名时立即停止。物理有线结果继续按 fail closed 处理，Wi-Fi 未执行。收尾合并后，维护者已批准另立边界执行至多一次、仅有线、无凭据的匿名协议形状诊断；该边界只允许保留响应类别、大小桶、是否重定向及固定字段存在位，不得保留正文、响应头、URL、账号、IP 或原始输出。ZOS 隔离能力仍未按 [`REL-LAB-002`](../docs/runbooks/campus-lab.md#rel-lab-002发现与供应) 证明。
 
 ## 已完成
 
@@ -42,7 +42,7 @@ snapshot_at: 2026-08-30
 - `LAB-DISCOVER` 的 BHK fallback 匿名阶段 B 拓扑：维护者人工启用 Wi-Fi 且未额外认证，随后人工关闭仅 TUN；system proxy、有线、Wi-Fi 与 RealVNC 继续可用。有线和 Wi-Fi 均为 UP、各有一个 IPv4 与默认路由；TUN 已不再 UP、IPv4 覆盖路由消失，status host 不再解析为 Clash fake-IP。Windows constrained-source 诊断对两个物理目标均选择精确源地址与精确物理出接口。exact-main `network list` 纯本地执行和 JSON 契约通过，但 7 个候选中只有物理有线 1、物理 Wi-Fi 1，另含 TUN 1 与虚拟接口 4，因此始终未运行 `network scan`。未读取或使用 controller secret，未产生正式 evidence。
 - BHK bound `status` 配置预检：有线与 Wi-Fi 各一次命令都返回退出码 2、有效 JSON、`ok=false`、`error.code=config` 且 stderr 为空。源码与同路径纯离线复现证明，Windows 在配置加载时先拒绝继承 DACL 的临时目录，随后才会校验 bind IP 并创建 HTTP client，因此两次均未发出网关请求。Agent 已在同一临时作用域创建仅当前用户、SYSTEM 与管理员可访问的受保护空目录；以不存在的配置文件运行 exact-main `profile list` 返回 0、有效 JSON、零 profile、空 stderr，且前后均未创建配置文件。重新运行任何 `status` 前仍需维护者明确批准。
 - BHK bound `status` 替代窗口：维护者明确批准物理有线与物理 Wi-Fi 各一次；请求前 exact binary/hash、受保护空配置、system proxy、两张物理网卡及各自 IPv4/default route、TUN/覆盖路由、非 fake-IP DNS、constrained-source 物理出口与 RealVNC 全部通过。有线仅执行一次，返回有效 `protocol_changed` 契约；Wi-Fi 按停止规则未执行，总真实请求数为 1。源码确认该分类发生在 HTTPS 响应到达后状态格式无法识别，或响应重定向/大小等安全约束被拒绝时；未采集、保存或输出原始响应。另发现状态解析路径写入内部 `ProtocolPart="status"`，而 CLI 脱敏 allowlist 只接受 `gateway_status`，所以公共 `details.protocol_part` 被清空，当前结果无法进一步安全细分。
-- `protocol_changed` 脱敏诊断契约修复：docs-first 固定产品 `ErrorDetails.ProtocolPart` 与 CLI allowlist 的六值枚举，状态格式无法识别统一使用 `gateway_status`；实现只改正该单一 producer 值，未放宽解析器或改变请求。SDK 合成测试证明单次未知 HTML 响应返回 `gateway_status` 且 response canary 不进入错误 JSON，CLI 合成测试证明该值保留、未知值清空。focused test、全量 test/race/vet/doccheck 均通过；固定 gitleaks `8.30.1` 合成 canary、38 commits 全历史/refs/reflog 与 209 文件工作树零 finding；`git fsck --full` 无损坏和 dangling commit，仅报告 1 个 dangling blob 与 14 个 dangling tree。未执行新的 live 请求。
+- `protocol_changed` 脱敏诊断契约修复：docs-first 固定产品 `ErrorDetails.ProtocolPart` 与 CLI allowlist 的六值枚举，状态格式无法识别统一使用 `gateway_status`；实现只改正该单一 producer 值，未放宽解析器或改变请求。SDK 合成测试证明单次未知 HTML 响应返回 `gateway_status` 且 response canary 不进入错误 JSON，CLI 合成测试证明该值保留、未知值清空。focused test、全量 test/race/vet/doccheck 均通过；固定 gitleaks `8.30.1` 合成 canary、38 commits 全历史/refs/reflog 与 209 文件工作树零 finding；`git fsck --full` 无损坏和 dangling commit，仅报告 1 个 dangling blob 与 14 个 dangling tree。signed implementation commit `8c1e24aa66824062580ec380d4bb2acce41ae991` 经 PR #16 的 CI run `33310700735` 六项 required checks 与 Native run `33310700716` 七项全部成功后，以普通 merge 合入 main `ce57f4e2474055defba00195645db363729d3533`；merge 双亲、tree `cd9ee5cb7c41e0900917b37d2e2491eac5f92e8d` 与 GitHub 签名均已精确复验，merge 后 CI run `33310968357` 六项与 Native run `33310968406` 七项再次全部成功。未执行新的 live 请求。
 - Signing key 登记后，`15fb31d`、`c562483`、`5bee31b`、`f1ca77c` 与 `907b3e7` 当前均由 GitHub 验证为 `verified=true, reason=valid`；不得为追溯修正签名状态而改写历史。
 
 ## 阻塞
@@ -50,10 +50,11 @@ snapshot_at: 2026-08-30
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
 - 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
 - `LAB-DISCOVER` 当前 `blocked`：需维护者提供非唯一性的极空间设备型号与 ZOS 版本，并在已登录的私有界面打开网络模式和虚拟机网卡只读设置；Agent 只读取能力选项，不读取账号、NetworkID、完整 IP/MAC，不保存截图，也不点击保存或创建。
-- BHK 匿名阶段 B 当前 `blocked`：有线 exact-main bound `status` 返回 `protocol_changed`，按 [`REL-LIVEGATE-002`](../docs/operations/live-validation.md#rel-livegate-002suite-状态机与清理权) 属于 fail，不能继续认证或把它降级为网络波动；Wi-Fi 额度未消耗。Agent 不读取 controller secret，不自动调用 RealVNC、NAS SSH 或 NAS 旧 ipgw 恢复校园网会话。
+- BHK 匿名阶段 B 继续 fail closed：有线 exact-main bound `status` 返回 `protocol_changed`，按 [`REL-LIVEGATE-002`](../docs/operations/live-validation.md#rel-livegate-002suite-状态机与清理权) 属于 fail，不能继续认证或把它降级为网络波动；Wi-Fi 额度未消耗。维护者虽已批准收尾后的单次最小匿名协议形状诊断，但在该诊断得到安全分类前仍不得继续认证。Agent 不读取 controller secret，不自动调用 RealVNC、NAS SSH 或 NAS 旧 ipgw 恢复校园网会话。
 
 ## 下一步
 
 - NAS 路径继续 fail closed；若以后恢复，仍只读确认 ZOS 能否同时提供管理 vNIC、独立测试物理口 vNIC，以及宿主测试口无 IP/DHCP/default route，不使用非官方修改。
-- BHK 阶段 B 下一步先对五文件修复创建并验证 SSH 签名提交，普通 push 当前分支、创建 PR，等待严格 required checks 与 Native workflow 后普通合并；merge 后精确复验签名、双亲、tree 与 checks。若仍需区分 live response 是未知格式、重定向还是超限，必须另行批准只保留固定脱敏形状字段的无凭据匿名诊断窗口；Wi-Fi `status` 在新边界形成前保持未执行。
-- 阶段 B 不得运行 `network scan`、login/logout、创建/启动 VM 或改变网络配置。临时资产暂留以避免在诊断决策前丢失可复验状态；若决定不再诊断，则精确清理 Agent 创建的 Windows 受保护空目录、临时 binary 与 WSL staging，再清理本地 fresh checkout/binary。三个旧对象继续搁置，完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
+- 先以只改 `docs/upgrade/status.md` 与本文件的 signed closeout commit、普通 push、受保护 PR、严格 CI/Native 和普通 merge记录已经完成的实现交付；merge 后精确复验签名、双亲、tree 与 checks。
+- closeout 完成后再建立单独执行边界：复核原生 Windows exact-main binary、受保护空配置、TUN/覆盖路由、物理有线 constrained-source 出口与 RealVNC，随后至多执行一次有线无凭据匿名协议形状诊断。只允许输出固定分类、大小桶、重定向布尔值和固定字段存在位；任何原始正文、响应头、URL、账号、IP 或原始 stdout/stderr 都不得采集、保存或输出。诊断前本文件必须先更新；任一边界不满足即停止且请求数保持为零。
+- 阶段 B 不得运行 Wi-Fi `status`、`network scan`、login/logout、创建/启动 VM 或改变网络配置。临时资产暂留以维持可复验状态；诊断结束后再按结果决定是否精确清理 Agent 创建的 Windows 受保护空目录、临时 binary、WSL staging 和本地 fresh checkout/binary。三个旧对象继续搁置，完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
