@@ -90,3 +90,15 @@ func directoryUnchangedAt(parent, original *directorySnapshot, name string, expe
 	defer reopened.close()
 	return stableFileInfo(original.info, reopened.info) && reopened.exact(expected)
 }
+
+func directoryRenamedUnchanged(name string, original *directorySnapshot, expected []string) bool {
+	if original == nil {
+		return false
+	}
+	reopened, err := openDirectorySnapshot(name)
+	if err != nil {
+		return false
+	}
+	defer reopened.close()
+	return stableOpenedFileInfo(original.info, reopened.info) && reopened.exact(expected)
+}

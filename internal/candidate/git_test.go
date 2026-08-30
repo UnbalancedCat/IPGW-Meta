@@ -46,7 +46,11 @@ func TestInspectGitSourceUsesExactTreeEncodingAndWhitelist(t *testing.T) {
 	writeTestFile(t, repository, "docs/upgrade/status.md", []byte("status two\n"), 0o644)
 	writeTestFile(t, repository, "docs/compatibility/auth-capabilities.md", []byte("auth two\n"), 0o644)
 	writeTestFile(t, repository, "docs/evidence/releases/v1.0.0/note.md", []byte("evidence two\n"), 0o644)
-	runTestCommand(t, repository, nil, "git", "add", "--", ".")
+	runTestCommand(t, repository, nil, "git", "add", "--",
+		"docs/upgrade/status.md",
+		"docs/compatibility/auth-capabilities.md",
+		"docs/evidence/releases/v1.0.0/note.md",
+	)
 	commitTestTree(t, repository, "whitelist")
 	whitelistCommit := strings.TrimSpace(runTestCommand(t, repository, nil, "git", "rev-parse", "HEAD"))
 	whitelist, err := InspectGitSource(context.Background(), repository, whitelistCommit)

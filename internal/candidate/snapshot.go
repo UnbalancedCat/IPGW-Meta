@@ -75,7 +75,7 @@ func (snapshot *regularSnapshot) readAll() ([]byte, error) {
 		return nil, ErrInvalidInput
 	}
 	after, err := snapshot.file.Stat()
-	if err != nil || !stableFileInfo(snapshot.info, after) || hasMultipleLinks(snapshot.file, after) {
+	if err != nil || !stableOpenedFileInfo(snapshot.info, after) || hasMultipleLinks(snapshot.file, after) {
 		return nil, ErrInvalidInput
 	}
 	return content, nil
@@ -113,4 +113,9 @@ func stableFileInfo(before, after os.FileInfo) bool {
 	return before != nil && after != nil && os.SameFile(before, after) &&
 		before.Mode() == after.Mode() && before.Size() == after.Size() && before.ModTime() == after.ModTime() &&
 		sameFileFingerprint(before, after)
+}
+
+func stableOpenedFileInfo(before, after os.FileInfo) bool {
+	return before != nil && after != nil && os.SameFile(before, after) &&
+		before.Mode() == after.Mode() && before.Size() == after.Size() && before.ModTime() == after.ModTime()
 }

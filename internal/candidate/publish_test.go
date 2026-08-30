@@ -119,7 +119,14 @@ func TestPublishCandidateDirectoryRetainsSnapshotAcrossRename(t *testing.T) {
 	}
 	defer snapshot.close()
 	validate := func(root string) bool {
-		return snapshot.unchanged() && directoryUnchanged(root, directory, []string{"sentinel"})
+		switch root {
+		case stage:
+			return snapshot.unchanged() && directoryUnchanged(root, directory, []string{"sentinel"})
+		case final:
+			return snapshot.unchanged() && directoryRenamedUnchanged(root, directory, []string{"sentinel"})
+		default:
+			return false
+		}
 	}
 	if !validate(stage) {
 		t.Fatal("retained snapshot does not match stage before publish")

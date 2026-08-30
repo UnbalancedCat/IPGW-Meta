@@ -101,6 +101,20 @@ func (seal *candidateSeal) unchanged(root string) bool {
 		directoryUnchanged(root, seal.rootDirectory, seal.rootEntryNames)
 }
 
+func (seal *candidateSeal) unchangedAfterRename(root string) bool {
+	if seal == nil {
+		return false
+	}
+	for _, name := range seal.paths {
+		if !seal.snapshots[name].unchanged() {
+			return false
+		}
+	}
+	return directoryUnchangedAt(seal.rootDirectory, seal.releaseDirectory, "release", seal.releaseNames) &&
+		directoryUnchangedAt(seal.rootDirectory, seal.testToolsDirectory, "test-tools", seal.toolNames) &&
+		directoryRenamedUnchanged(root, seal.rootDirectory, seal.rootEntryNames)
+}
+
 func (seal *candidateSeal) close() {
 	if seal == nil {
 		return

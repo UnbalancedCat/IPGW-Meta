@@ -136,9 +136,11 @@ jobs:
           [[ $source_tree =~ ^[0-9a-f]{40}$ ]]
           [[ $source_date_epoch =~ ^[1-9][0-9]*$ ]]
           candidate_id="$RELEASE_VERSION-${SOURCE_COMMIT:0:12}-$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-          printf 'candidate_id=%s\n' "$candidate_id" >>"$GITHUB_OUTPUT"
-          printf 'source_tree=%s\n' "$source_tree" >>"$GITHUB_OUTPUT"
-          printf 'source_date_epoch=%s\n' "$source_date_epoch" >>"$GITHUB_OUTPUT"
+          {
+            printf 'candidate_id=%s\n' "$candidate_id"
+            printf 'source_tree=%s\n' "$source_tree"
+            printf 'source_date_epoch=%s\n' "$source_date_epoch"
+          } >>"$GITHUB_OUTPUT"
 
   build:
     name: Build and upload one immutable candidate-set
@@ -278,12 +280,14 @@ jobs:
           [[ $candidate_set_sha256 =~ ^[0-9a-f]{64}$ ]]
           [[ $release_manifest_sha256 =~ ^[0-9a-f]{64}$ ]]
           [[ $build_input_sha256 =~ ^[0-9a-f]{64}$ ]]
-          printf 'artifact_id=%s\n' "$UPLOAD_ARTIFACT_ID" >>"$GITHUB_OUTPUT"
-          printf 'artifact_digest=%s\n' "$artifact_digest" >>"$GITHUB_OUTPUT"
-          printf 'artifact_name=%s\n' "$EXPECTED_ARTIFACT_NAME" >>"$GITHUB_OUTPUT"
-          printf 'candidate_set_sha256=%s\n' "$candidate_set_sha256" >>"$GITHUB_OUTPUT"
-          printf 'release_manifest_sha256=%s\n' "$release_manifest_sha256" >>"$GITHUB_OUTPUT"
-          printf 'build_input_sha256=%s\n' "$build_input_sha256" >>"$GITHUB_OUTPUT"
+          {
+            printf 'artifact_id=%s\n' "$UPLOAD_ARTIFACT_ID"
+            printf 'artifact_digest=%s\n' "$artifact_digest"
+            printf 'artifact_name=%s\n' "$EXPECTED_ARTIFACT_NAME"
+            printf 'candidate_set_sha256=%s\n' "$candidate_set_sha256"
+            printf 'release_manifest_sha256=%s\n' "$release_manifest_sha256"
+            printf 'build_input_sha256=%s\n' "$build_input_sha256"
+          } >>"$GITHUB_OUTPUT"
 
   native-install:
     name: Candidate native install (${{ matrix.target }}, ${{ matrix.test_mode }})
@@ -539,6 +543,8 @@ jobs:
           [[ $ARTIFACT_NAME == "candidate-set-$CANDIDATE_ID" ]]
           [[ $(wc -l <"$RUNNER_TEMP/ipgw-public-subjects.sha256") -eq 10 ]]
 
+          # Markdown code spans are intentionally literal in the summary.
+          # shellcheck disable=SC2016
           {
             printf '## Verified candidate identity\n\n'
             printf -- '- Candidate ID: `%s`\n' "$CANDIDATE_ID"

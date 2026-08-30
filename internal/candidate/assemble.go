@@ -258,7 +258,17 @@ func assembleCandidate(ctx context.Context, options AssembleOptions, validateToo
 		expected.Root = root
 		return result == expected
 	}
-	if err := publishCandidateDirectory(stage, options.OutputDir, stageInfo, seal.unchanged, seal.close, postVerify); err != nil {
+	validateSeal := func(root string) bool {
+		switch root {
+		case stage:
+			return seal.unchanged(root)
+		case options.OutputDir:
+			return runtime.GOOS != "windows" && seal.unchangedAfterRename(root)
+		default:
+			return false
+		}
+	}
+	if err := publishCandidateDirectory(stage, options.OutputDir, stageInfo, validateSeal, seal.close, postVerify); err != nil {
 		return Result{}, ErrAssemble
 	}
 	published = true
