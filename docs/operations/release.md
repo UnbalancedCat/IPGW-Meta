@@ -126,15 +126,45 @@ provenance 精确覆盖十一个 subject：candidate-set subject 使用 artifact
 
 ## REL-PROMOTION-001：Promotion lock 与原样发布
 
-promotion lock 位于 `docs/evidence/releases/v1.0.0/promotion-lock.json`，绑定 version、candidate/source、workflow/artifact、candidate-set/release-manifest/build-input digest、attestation subjects 和已审阅 evidence IDs。candidate source 与最终 tag 之间只允许修改 `docs/evidence/releases/v1.0.0/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`；其他变化使候选失效。
+promotion lock 位于 `docs/evidence/releases/v1.0.0/promotion-lock.json`。它只绑定已经通过真实矩阵和人工复核的 Candidate；不得把 PR/native 临时 artifact、重新构建输出或本地副本写入 lock。
 
-最终 tag 必须是维护者用专用 Ed25519 key 创建、指向 promotion commit 的 SSH 签名 annotated `v1.0.0`。私钥只存在本地 Windows 用户环境；公钥登记为 GitHub signing key。promotion job 必须通过 GitHub API 验证 tag signature valid/verified，并且：
+### Promotion lock v1
 
-1. 按 lock 中精确 artifact ID 下载 candidate-set，验证 artifact digest、集合 hash、manifest、全部资产与 attestation。
-2. 禁止 setup-go、build、package、strip、sign 或重新压缩。
-3. 创建不可见 draft，不使用 clobber，上传六个 bundle、两个 installer、release manifest 和 SHA256SUMS。
-4. 重新下载每个资产，核对名称、大小和 SHA-256；全部一致后才公开。
-5. 任一步失败保持 draft 不可见；不得公开半包、替换单资产或从其他 run 拼装发布。
+`promotion-lock.json` 是 closed-world canonical JSON：有效 UTF-8、大小不超过 64 KiB，拒绝任意层 duplicate key、未知/缺失字段、第二个 JSON value 与非空白尾随字节；编码按下述字段顺序使用紧凑 JSON，末尾恰好一个 LF，validator 必须拒绝不等于 canonical 编码的原始字节。顶层精确包含 15 个字段：`schema_version`、`plan_id`、`revision`、`version`、`candidate_id`、`source_commit`、`source_tree`、`workflow`、`artifact`、`candidate_set_sha256`、`release_manifest_sha256`、`build_input_sha256`、`attestation_subjects`、`evidence_ids`、`release_notes_sha256`。
+
+`schema_version`、plan/revision/version 固定为 `1`、`IPGW-META-V1`、`2026-08-28-r2`、`v1.0.0`。candidate/source/tree 与 [`REL-ATTEST-001`](#rel-attest-001candidate-manifest-与-provenance) 使用相同格式和交叉约束。`workflow` 精确包含 `repository_id`、`path`、`run_id`、`run_attempt`，依次固定为当前 GitHub repository ID `1186323753`、`.github/workflows/candidate.yml` 和 Candidate 的正整数 run ID/attempt。`artifact` 精确包含正整数 `id`、固定 `name` 与 `digest`；name 必须为 `candidate-set-<candidate_id>`，digest 必须为 `sha256:<64-lowerhex>`。
+
+三个独立 SHA-256 必须分别等于 candidate manifest 原始字节、`release/release-manifest.json` 原始字节及 Candidate manifest 的 build-input 值。`attestation_subjects` 精确包含 11 个对象，每个对象按 `name`、`sha256` 顺序编码并按 name 原始 ASCII 字节升序：第一类是 artifact name 与 artifact digest，另外十项是 Candidate manifest 中全部公开资产的最终 basename 与文件 digest；禁止私有 helper、根 checksum、重复或大小写折叠冲突。`evidence_ids` 精确包含四个互异 `EVID-YYYYMMDD-NNN`，按 ASCII 升序，并各自绑定同目录 `<evidence-id>.json` 的 canonical public summary；四份 summary 必须恰好覆盖 [`REL-LIVE-MATRIX-001`](live-validation.md#rel-live-matrix-001v1-真实网络矩阵) 的四个环境 tuple 且均为 `pass`。`release_notes_sha256` 绑定同目录 `release-notes.md` 的精确字节。
+
+`release-notes.md` 必须是以下 canonical UTF-8/LF 内容，不得增加自由文本、HTML、链接查询参数或未由 lock/evidence 支持的能力声明：
+
+```text
+# IPGW-Meta v1.0.0
+
+- 新安装默认模式：`meta`。
+- 既有安装默认模式：保持 `legacy`；迁移必须由维护者显式执行。
+- 配置迁移：使用 v1 事务化 preview/apply 流程；失败保持旧配置并保留可恢复状态。
+- Password 真实证据：promotion lock 绑定 NAS campus wired、BHK campus wired 与 BHK campus Wi-Fi 三项通过记录。
+- Terminal QR 真实证据：promotion lock 绑定 NAS campus wired 一项真实闭环通过记录。
+- 异账号 conflict/switch：仅有合成覆盖，不声明真实双账号验收。
+- OTP：仅 `observed_anonymous + detected_only`，不声明登录支持。
+- 自更新：禁用；请从官方 GitHub Release 获取并验证资产。
+- macOS：仅完成原生安装和 CLI smoke，没有校园网认证证据。
+```
+
+### Source、tag 与远端身份
+
+candidate source 必须是 promotion commit 的祖先；两者 tree diff 只允许 `docs/evidence/releases/v1.0.0/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`。promotion validator 还必须对 promotion commit 重新计算 [`REL-ATTEST-001`](#rel-attest-001candidate-manifest-与-provenance) 的 build-input digest 并与 lock 相等；仅检查 diff path 不足以通过。
+
+最终 `v1.0.0` 必须是维护者用专用 Ed25519 key 创建、指向 promotion commit 的 SSH 签名 annotated tag。私钥只存在本地 Windows 用户环境；公钥登记为 GitHub signing key。promotion workflow 只接受精确 `refs/tags/v1.0.0`，通过 GitHub API 验证 ref 指向 tag object、tag object 指向受保护 `main` 当前 tip、tag 名/version 和 `verification.verified=true`、`reason=valid`。lightweight tag、其他 tag、非 main tip、签名未知/无效或 tag/source/lock 漂移全部在任何 release mutation 前失败。
+
+Candidate workflow run 必须属于同一 repository，path 精确为 `.github/workflows/candidate.yml`，event 为 `workflow_dispatch`，head branch/ref 为 `main`，head SHA、run attempt 与 lock 一致，且 conclusion 为 `success`。artifact 必须按 lock 的精确 ID 通过 API 回读并匹配 run、name、digest、repository 与 `expired=false`；下载的原始 artifact archive SHA-256 必须等于服务端 digest。Promotion 必须重新验证 14 文件 closed tree、candidate/release manifest、两级 checksums、全部成员与 build-input，并使用 `gh attestation verify` 将 11 个 subject 同时约束到 repository、Candidate signer workflow、`refs/heads/main`、source commit、run ID/attempt invocation 和非 self-hosted runner。
+
+### No-build draft 与逐资产复核
+
+promotion job 禁止 setup-go、build、package、strip、sign、重新压缩或从其他 run 拼装；只能从已验证 Candidate tree 选择六个 bundle、两个 installer、`release-manifest.json` 与 `SHA256SUMS`。远端不存在任何同 tag release 时才可用 `--verify-tag --draft --latest=false` 一次创建不可见 draft 并上传上述十项；禁止 `gh release upload`、`--clobber`、覆盖/跳过单资产或自动创建 tag。
+
+创建后必须通过 release API 验证同 repository/tag、`draft=true`、`prerelease=false`、十个互异 asset 名称和上传完成状态，再下载到确认不存在的新目录；下载目录必须精确包含十项，并逐项匹配 Candidate 的名称、大小和 SHA-256。公开前再次复核 main/tag/lock/artifact/attestation 与 draft asset identity；全部一致后只允许执行一次 `gh release edit v1.0.0 --draft=false --latest=true --verify-tag`。任一步失败保持 draft 不可见；不得公开半包、替换单资产、删除失败 draft 或自动重试 mutation。
 
 ## REL-UPDATE-001：未来恢复自更新的前置条件
 

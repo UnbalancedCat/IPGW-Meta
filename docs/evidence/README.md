@@ -206,6 +206,14 @@ capability 的封闭枚举为 `supported`、`detected_only`、`observed_anonymou
 4. 只有选定的 candidate/evidence ID、平台、testbed、network、auth method、suite、result、capability before/after、UTC 时间和整个私有 bundle 的 SHA-256 可进入 `docs/evidence/releases/<version>/` 的脱敏摘要。
 5. 私有 bundle 不得进入 Git、issue、PR 附件或公共 artifact。是否保留和何时安全删除由维护者在独立批准窗口决定。
 
+### Public evidence summary v1
+
+每个进入 promotion lock 的 evidence ID 必须在 `docs/evidence/releases/v1.0.0/<evidence-id>.json` 有且仅有一份 public summary。summary 是 closed-world canonical JSON：有效 UTF-8、大小不超过 64 KiB、拒绝任意层 duplicate/unknown/missing key、第二个 JSON value 和非空白尾随字节；按下述顺序紧凑编码并以一个 LF 结尾。
+
+顶层精确包含 18 个字段：`schema_version`、`plan_id`、`revision`、`evidence_id`、`candidate_id`、`candidate_set_sha256`、`source_commit`、`platform`、`testbed`、`network_type`、`auth_method`、`suite`、`result`、`capability_before`、`capability_after`、`started_at`、`finished_at`、`bundle_sha256`。前 17 项必须逐值等于已验证私有 `evidence.json` 的同名字段；`bundle_sha256` 是按文件名原始 ASCII 字节升序连接 `<name>NUL<decimal-size>NUL<file-sha256>LF` 后计算的整个私有三文件 bundle SHA-256，name 精确为 `SHA256SUMS`、`evidence.json`、`summary.md`。禁止复制 steps、notes、reviewer、路径、命令、profile、username、IP、URL 或任何原始输出。
+
+`result` 必须为 `pass`，capability before/after 必须满足 [`EVID-AUTH-001`](#evid-auth-001认证证据字段) 的通过转换。Promotion 的四份 summary 必须绑定同一 candidate/source/set hash，并恰好各覆盖一次 `REL-LIVEGATE-001` 的四个允许 tuple：NAS wired password、NAS wired Terminal QR、BHK wired password、BHK Wi-Fi password；重复或缺少 tuple 均拒绝。私有 bundle 仍不得进入 Git、issue、PR、Actions artifact 或 release。
+
 ## EVID-SECURITY-001：安全事件证据
 
 安全事件演练可以记录脱敏的扫描命中数量、规则 ID、仓库内路径、工具版本、提交/tag 哈希及复扫结果，但不得复制 finding、匹配片段、原始报告、认证材料或可用于恢复认证材料的哈希。演练结果必须明确标注是否修改了真实 refs，不能用隔离镜像通过代替会话失效、远端强制更新或 GitHub 缓存清理。

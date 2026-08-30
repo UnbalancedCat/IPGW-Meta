@@ -1,0 +1,576 @@
+name: Promotion
+
+on:
+  push:
+    tags:
+      - v1.0.0
+
+permissions: {}
+
+concurrency:
+  group: promotion-v1.0.0
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote verified v1.0.0 candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      attestations: read
+      contents: write
+    env:
+      VERSION: v1.0.0
+      LOCK_PATH: docs/evidence/releases/v1.0.0/promotion-lock.json
+      NOTES_PATH: docs/evidence/releases/v1.0.0/release-notes.md
+      EXPECTED_REPOSITORY: UnbalancedCat/ipgw-meta
+      EXPECTED_REPOSITORY_ID: "1186323753"
+    steps:
+      - name: Check out the signed tag commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/v1.0.0
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify signed annotated tag, protected main, and release absence
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $GITHUB_REPOSITORY == "$EXPECTED_REPOSITORY" ]]
+          [[ $GITHUB_REPOSITORY_ID == "$EXPECTED_REPOSITORY_ID" ]]
+          [[ $GITHUB_REF == refs/tags/v1.0.0 ]]
+          [[ $GITHUB_REF_TYPE == tag ]]
+          [[ $GITHUB_REF_NAME == "$VERSION" ]]
+
+          tag_ref_json="$RUNNER_TEMP/promotion-tag-ref.json"
+          tag_object_json="$RUNNER_TEMP/promotion-tag-object.json"
+          branch_json="$RUNNER_TEMP/promotion-main.json"
+          release_probe="$RUNNER_TEMP/promotion-release-probe.json"
+
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" >"$tag_ref_json"
+          jq -e --arg version "$VERSION" '
+            .ref == ("refs/tags/" + $version) and
+            .object.type == "tag" and
+            (.object.sha | test("^[0-9a-f]{40}$"))
+          ' "$tag_ref_json" >/dev/null
+          tag_object=$(jq -er '.object.sha' "$tag_ref_json")
+
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" >"$tag_object_json"
+          jq -e --arg version "$VERSION" --arg oid "$tag_object" '
+            .sha == $oid and
+            .tag == $version and
+            .object.type == "commit" and
+            (.object.sha | test("^[0-9a-f]{40}$")) and
+            .verification.verified == true and
+            .verification.reason == "valid"
+          ' "$tag_object_json" >/dev/null
+          tag_commit=$(jq -er '.object.sha' "$tag_object_json")
+
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$tag_commit" '
+            .name == "main" and
+            .protected == true and
+            .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+
+          [[ $(git cat-file -t "$tag_object") == tag ]]
+          [[ $(git rev-parse "refs/tags/$VERSION^{commit}") == "$tag_commit" ]]
+          [[ $(git rev-parse HEAD) == "$tag_commit" ]]
+          [[ -z $(git status --porcelain=v1 --untracked-files=all) ]]
+
+          release_status=$(curl --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output "$release_probe" --write-out '%{http_code}' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")
+          [[ $release_status == 404 ]]
+
+          {
+            printf 'tag_object=%s\n' "$tag_object"
+            printf 'tag_commit=%s\n' "$tag_commit"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Require completed implementation prerequisites
+        run: make promotion-gate
+
+      - name: Validate canonical promotion lock and source whitelist
+        id: lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/promotion.py lock \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --notes "$NOTES_PATH" \
+            --tag-commit "${{ steps.tag.outputs.tag_commit }}" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Verify exact Candidate run and artifact API identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ steps.lock.outputs.candidate_run_id }}
+          CANDIDATE_RUN_ATTEMPT: ${{ steps.lock.outputs.candidate_run_attempt }}
+          ARTIFACT_ID: ${{ steps.lock.outputs.artifact_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_json="$RUNNER_TEMP/promotion-candidate-run.json"
+          artifact_json="$RUNNER_TEMP/promotion-candidate-artifact.json"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/attempts/$CANDIDATE_RUN_ATTEMPT" \
+            >"$run_json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" >"$artifact_json"
+          python3 scripts/promotion.py api \
+            --lock "$LOCK_PATH" \
+            --run-json "$run_json" \
+            --artifact-json "$artifact_json"
+
+      - name: Download and fully verify the frozen Candidate artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.lock.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ steps.lock.outputs.artifact_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw_parent="$RUNNER_TEMP/ipgw-promotion-raw"
+          raw_artifact="$raw_parent/$ARTIFACT_NAME"
+          candidate_root="$RUNNER_TEMP/ipgw-promotion-candidate"
+          [[ ! -e $raw_parent && ! -e $candidate_root ]]
+          mkdir "$raw_parent"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output "$raw_artifact" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"
+          python3 scripts/promotion.py artifact \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --archive "$raw_artifact" \
+            --destination "$candidate_root"
+
+      - name: Verify Candidate and public provenance attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.lock.outputs.artifact_name }}
+          SOURCE_COMMIT: ${{ steps.lock.outputs.source_commit }}
+          CANDIDATE_RUN_ID: ${{ steps.lock.outputs.candidate_run_id }}
+          CANDIDATE_RUN_ATTEMPT: ${{ steps.lock.outputs.candidate_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw_artifact="$RUNNER_TEMP/ipgw-promotion-raw/$ARTIFACT_NAME"
+          candidate_root="$RUNNER_TEMP/ipgw-promotion-candidate"
+          attestation_root="$RUNNER_TEMP/ipgw-promotion-attestations"
+          public_root="$attestation_root/public"
+          [[ ! -e $attestation_root ]]
+          mkdir -p "$public_root"
+          signer_workflow="github.com/UnbalancedCat/ipgw-meta/.github/workflows/candidate.yml"
+
+          gh attestation verify "$raw_artifact" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$signer_workflow" \
+            --source-ref refs/heads/main \
+            --source-digest "$SOURCE_COMMIT" \
+            --deny-self-hosted-runners \
+            --format json >"$attestation_root/candidate.json"
+
+          for name in \
+            SHA256SUMS \
+            install.ps1 \
+            install.sh \
+            ipgw-meta-darwin-amd64.tar.gz \
+            ipgw-meta-darwin-arm64.tar.gz \
+            ipgw-meta-linux-amd64.tar.gz \
+            ipgw-meta-linux-arm64.tar.gz \
+            ipgw-meta-windows-amd64.zip \
+            ipgw-meta-windows-arm64.zip \
+            release-manifest.json
+          do
+            gh attestation verify "$candidate_root/release/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer_workflow" \
+              --source-ref refs/heads/main \
+              --source-digest "$SOURCE_COMMIT" \
+              --deny-self-hosted-runners \
+              --format json >"$public_root/$name.json"
+          done
+
+          python3 scripts/promotion.py attestations \
+            --lock "$LOCK_PATH" \
+            --candidate-json "$attestation_root/candidate.json" \
+            --public-directory "$public_root"
+
+      - name: Recheck every remote identity immediately before draft creation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_OBJECT: ${{ steps.tag.outputs.tag_object }}
+          TAG_COMMIT: ${{ steps.tag.outputs.tag_commit }}
+          SOURCE_COMMIT: ${{ steps.lock.outputs.source_commit }}
+          ARTIFACT_ID: ${{ steps.lock.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ steps.lock.outputs.artifact_name }}
+          ARTIFACT_DIGEST: ${{ steps.lock.outputs.artifact_digest }}
+          CANDIDATE_RUN_ID: ${{ steps.lock.outputs.candidate_run_id }}
+          CANDIDATE_RUN_ATTEMPT: ${{ steps.lock.outputs.candidate_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          make promotion-gate
+          lock_output="$RUNNER_TEMP/promotion-lock-before-draft.output"
+          : >"$lock_output"
+          python3 scripts/promotion.py lock \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --notes "$NOTES_PATH" \
+            --tag-commit "$TAG_COMMIT" \
+            --github-output "$lock_output"
+
+          tag_ref_json="$RUNNER_TEMP/promotion-tag-ref-before-draft.json"
+          tag_object_json="$RUNNER_TEMP/promotion-tag-object-before-draft.json"
+          branch_json="$RUNNER_TEMP/promotion-main-before-draft.json"
+          run_json="$RUNNER_TEMP/promotion-run-before-draft.json"
+          artifact_json="$RUNNER_TEMP/promotion-artifact-before-draft.json"
+          release_probe="$RUNNER_TEMP/promotion-release-before-draft.json"
+
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" >"$tag_ref_json"
+          jq -e --arg oid "$TAG_OBJECT" '
+            .object.type == "tag" and .object.sha == $oid
+          ' "$tag_ref_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" >"$tag_object_json"
+          jq -e --arg version "$VERSION" --arg sha "$TAG_COMMIT" '
+            .tag == $version and
+            .object.type == "commit" and
+            .object.sha == $sha and
+            .verification.verified == true and
+            .verification.reason == "valid"
+          ' "$tag_object_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/attempts/$CANDIDATE_RUN_ATTEMPT" \
+            >"$run_json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" >"$artifact_json"
+          python3 scripts/promotion.py api \
+            --lock "$LOCK_PATH" \
+            --run-json "$run_json" \
+            --artifact-json "$artifact_json"
+          python3 scripts/promotion.py candidate \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --candidate-root "$RUNNER_TEMP/ipgw-promotion-candidate"
+
+          expected_digest=${ARTIFACT_DIGEST#sha256:}
+          actual_digest=$(sha256sum "$RUNNER_TEMP/ipgw-promotion-raw/$ARTIFACT_NAME" | awk '{print $1}')
+          [[ $actual_digest == "$expected_digest" ]]
+
+          release_status=$(curl --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output "$release_probe" --write-out '%{http_code}' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")
+          [[ $release_status == 404 ]]
+          [[ -z $(git status --porcelain=v1 --untracked-files=all) ]]
+
+      - name: Create one invisible no-clobber draft from exact Candidate bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_OBJECT: ${{ steps.tag.outputs.tag_object }}
+          TAG_COMMIT: ${{ steps.tag.outputs.tag_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          make promotion-gate
+          lock_output="$RUNNER_TEMP/promotion-lock-at-draft-mutation.output"
+          : >"$lock_output"
+          python3 scripts/promotion.py lock \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --notes "$NOTES_PATH" \
+            --tag-commit "$TAG_COMMIT" \
+            --github-output "$lock_output"
+          python3 scripts/promotion.py candidate \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --candidate-root "$RUNNER_TEMP/ipgw-promotion-candidate"
+
+          tag_ref_json="$RUNNER_TEMP/promotion-tag-ref-at-draft-mutation.json"
+          tag_object_json="$RUNNER_TEMP/promotion-tag-object-at-draft-mutation.json"
+          branch_json="$RUNNER_TEMP/promotion-main-at-draft-mutation.json"
+          release_probe="$RUNNER_TEMP/promotion-release-at-draft-mutation.json"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" >"$tag_ref_json"
+          jq -e --arg oid "$TAG_OBJECT" '
+            .object.type == "tag" and .object.sha == $oid
+          ' "$tag_ref_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" >"$tag_object_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .object.type == "commit" and
+            .object.sha == $sha and
+            .verification.verified == true and
+            .verification.reason == "valid"
+          ' "$tag_object_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+          release_status=$(curl --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output "$release_probe" --write-out '%{http_code}' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")
+          [[ $release_status == 404 ]]
+          candidate_release="$RUNNER_TEMP/ipgw-promotion-candidate/release"
+          gh release create "$VERSION" \
+            "$candidate_release/SHA256SUMS" \
+            "$candidate_release/install.ps1" \
+            "$candidate_release/install.sh" \
+            "$candidate_release/ipgw-meta-darwin-amd64.tar.gz" \
+            "$candidate_release/ipgw-meta-darwin-arm64.tar.gz" \
+            "$candidate_release/ipgw-meta-linux-amd64.tar.gz" \
+            "$candidate_release/ipgw-meta-linux-arm64.tar.gz" \
+            "$candidate_release/ipgw-meta-windows-amd64.zip" \
+            "$candidate_release/ipgw-meta-windows-arm64.zip" \
+            "$candidate_release/release-manifest.json" \
+            --draft \
+            --latest=false \
+            --notes-file "$NOTES_PATH" \
+            --title "IPGW-Meta v1.0.0" \
+            --verify-tag
+
+      - name: Re-download and verify every draft asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$RUNNER_TEMP/ipgw-promotion-draft.json"
+          download_root="$RUNNER_TEMP/ipgw-promotion-draft-download"
+          [[ ! -e $download_root ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" >"$release_json"
+          mkdir "$download_root"
+          gh release download "$VERSION" --dir "$download_root"
+          python3 scripts/promotion.py release \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --candidate-root "$RUNNER_TEMP/ipgw-promotion-candidate" \
+            --release-json "$release_json" \
+            --download-directory "$download_root" \
+            --expect-draft true
+
+      - name: Final identity and attestation recheck before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_OBJECT: ${{ steps.tag.outputs.tag_object }}
+          TAG_COMMIT: ${{ steps.tag.outputs.tag_commit }}
+          SOURCE_COMMIT: ${{ steps.lock.outputs.source_commit }}
+          ARTIFACT_ID: ${{ steps.lock.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ steps.lock.outputs.artifact_name }}
+          ARTIFACT_DIGEST: ${{ steps.lock.outputs.artifact_digest }}
+          CANDIDATE_RUN_ID: ${{ steps.lock.outputs.candidate_run_id }}
+          CANDIDATE_RUN_ATTEMPT: ${{ steps.lock.outputs.candidate_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          make promotion-gate
+          lock_output="$RUNNER_TEMP/promotion-lock-before-publish.output"
+          : >"$lock_output"
+          python3 scripts/promotion.py lock \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --notes "$NOTES_PATH" \
+            --tag-commit "$TAG_COMMIT" \
+            --github-output "$lock_output"
+
+          tag_ref_json="$RUNNER_TEMP/promotion-tag-ref-before-publish.json"
+          tag_object_json="$RUNNER_TEMP/promotion-tag-object-before-publish.json"
+          branch_json="$RUNNER_TEMP/promotion-main-before-publish.json"
+          run_json="$RUNNER_TEMP/promotion-run-before-publish.json"
+          artifact_json="$RUNNER_TEMP/promotion-artifact-before-publish.json"
+          release_json="$RUNNER_TEMP/promotion-draft-before-publish.json"
+
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" >"$tag_ref_json"
+          jq -e --arg oid "$TAG_OBJECT" '
+            .object.type == "tag" and .object.sha == $oid
+          ' "$tag_ref_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" >"$tag_object_json"
+          jq -e --arg version "$VERSION" --arg sha "$TAG_COMMIT" '
+            .tag == $version and
+            .object.type == "commit" and
+            .object.sha == $sha and
+            .verification.verified == true and
+            .verification.reason == "valid"
+          ' "$tag_object_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/attempts/$CANDIDATE_RUN_ATTEMPT" \
+            >"$run_json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" >"$artifact_json"
+          python3 scripts/promotion.py api \
+            --lock "$LOCK_PATH" \
+            --run-json "$run_json" \
+            --artifact-json "$artifact_json"
+          python3 scripts/promotion.py candidate \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --candidate-root "$RUNNER_TEMP/ipgw-promotion-candidate"
+
+          expected_digest=${ARTIFACT_DIGEST#sha256:}
+          actual_digest=$(sha256sum "$RUNNER_TEMP/ipgw-promotion-raw/$ARTIFACT_NAME" | awk '{print $1}')
+          [[ $actual_digest == "$expected_digest" ]]
+
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" >"$release_json"
+          python3 scripts/promotion.py release \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --candidate-root "$RUNNER_TEMP/ipgw-promotion-candidate" \
+            --release-json "$release_json" \
+            --download-directory "$RUNNER_TEMP/ipgw-promotion-draft-download" \
+            --expect-draft true
+
+          attestation_root="$RUNNER_TEMP/ipgw-promotion-attestations-final"
+          public_root="$attestation_root/public"
+          [[ ! -e $attestation_root ]]
+          mkdir -p "$public_root"
+          signer_workflow="github.com/UnbalancedCat/ipgw-meta/.github/workflows/candidate.yml"
+          gh attestation verify "$RUNNER_TEMP/ipgw-promotion-raw/$ARTIFACT_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$signer_workflow" \
+            --source-ref refs/heads/main \
+            --source-digest "$SOURCE_COMMIT" \
+            --deny-self-hosted-runners \
+            --format json >"$attestation_root/candidate.json"
+          for name in \
+            SHA256SUMS \
+            install.ps1 \
+            install.sh \
+            ipgw-meta-darwin-amd64.tar.gz \
+            ipgw-meta-darwin-arm64.tar.gz \
+            ipgw-meta-linux-amd64.tar.gz \
+            ipgw-meta-linux-arm64.tar.gz \
+            ipgw-meta-windows-amd64.zip \
+            ipgw-meta-windows-arm64.zip \
+            release-manifest.json
+          do
+            gh attestation verify "$RUNNER_TEMP/ipgw-promotion-candidate/release/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer_workflow" \
+              --source-ref refs/heads/main \
+              --source-digest "$SOURCE_COMMIT" \
+              --deny-self-hosted-runners \
+              --format json >"$public_root/$name.json"
+          done
+          python3 scripts/promotion.py attestations \
+            --lock "$LOCK_PATH" \
+            --candidate-json "$attestation_root/candidate.json" \
+            --public-directory "$public_root"
+          [[ -z $(git status --porcelain=v1 --untracked-files=all) ]]
+
+      - name: Publish the already verified draft exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_OBJECT: ${{ steps.tag.outputs.tag_object }}
+          TAG_COMMIT: ${{ steps.tag.outputs.tag_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          make promotion-gate
+          lock_output="$RUNNER_TEMP/promotion-lock-at-publish-mutation.output"
+          : >"$lock_output"
+          python3 scripts/promotion.py lock \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --notes "$NOTES_PATH" \
+            --tag-commit "$TAG_COMMIT" \
+            --github-output "$lock_output"
+
+          tag_ref_json="$RUNNER_TEMP/promotion-tag-ref-at-publish-mutation.json"
+          tag_object_json="$RUNNER_TEMP/promotion-tag-object-at-publish-mutation.json"
+          branch_json="$RUNNER_TEMP/promotion-main-at-publish-mutation.json"
+          release_json="$RUNNER_TEMP/promotion-draft-at-publish-mutation.json"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" >"$tag_ref_json"
+          jq -e --arg oid "$TAG_OBJECT" '
+            .object.type == "tag" and .object.sha == $oid
+          ' "$tag_ref_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" >"$tag_object_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .object.type == "commit" and
+            .object.sha == $sha and
+            .verification.verified == true and
+            .verification.reason == "valid"
+          ' "$tag_object_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" >"$release_json"
+          python3 scripts/promotion.py release \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --candidate-root "$RUNNER_TEMP/ipgw-promotion-candidate" \
+            --release-json "$release_json" \
+            --download-directory "$RUNNER_TEMP/ipgw-promotion-draft-download" \
+            --expect-draft true
+          [[ -z $(git status --porcelain=v1 --untracked-files=all) ]]
+          gh release edit v1.0.0 --draft=false --latest=true --verify-tag
+
+      - name: Verify the public release and a fresh public re-download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_OBJECT: ${{ steps.tag.outputs.tag_object }}
+          TAG_COMMIT: ${{ steps.tag.outputs.tag_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$RUNNER_TEMP/ipgw-promotion-public.json"
+          download_root="$RUNNER_TEMP/ipgw-promotion-public-download"
+          tag_ref_json="$RUNNER_TEMP/promotion-tag-ref-after-publish.json"
+          tag_object_json="$RUNNER_TEMP/promotion-tag-object-after-publish.json"
+          branch_json="$RUNNER_TEMP/promotion-main-after-publish.json"
+          [[ ! -e $download_root ]]
+
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" >"$release_json"
+          mkdir "$download_root"
+          gh release download "$VERSION" --dir "$download_root"
+          python3 scripts/promotion.py release \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --lock "$LOCK_PATH" \
+            --candidate-root "$RUNNER_TEMP/ipgw-promotion-candidate" \
+            --release-json "$release_json" \
+            --download-directory "$download_root" \
+            --expect-draft false
+
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" >"$tag_ref_json"
+          jq -e --arg oid "$TAG_OBJECT" '
+            .object.type == "tag" and .object.sha == $oid
+          ' "$tag_ref_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" >"$tag_object_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .object.type == "commit" and
+            .object.sha == $sha and
+            .verification.verified == true and
+            .verification.reason == "valid"
+          ' "$tag_object_json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" >"$branch_json"
+          jq -e --arg sha "$TAG_COMMIT" '
+            .protected == true and .commit.sha == $sha
+          ' "$branch_json" >/dev/null
+          [[ -z $(git status --porcelain=v1 --untracked-files=all) ]]
