@@ -125,6 +125,15 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - PR #12 最终 head 的 CI run `33282461292` 六项 required checks 和 Native run `33282461260` 的 package 与六个平台共七个 jobs 全部成功。PR 已以普通 merge 合入 `382a8f994761a4a5d73f578d08f263718eac958c`；双亲依次为 `f907e270273bb376b37439e149567fa0398ed976` 与 `73f5aa30a29aebb60970319ea378bb20b62bdf06`，tree 为 `0206c0a06d3c8c46fc1225c5440d8a61b7ad2554`，GitHub 签名为 `valid`。merge 后 CI run `33282708893` 六项和 Native run `33282708924` 七项再次全部成功。
 - `WP-M3-CANDIDATE` 完成，但 M0/`SEC-HISTORY-001` 仍为 `in_progress`，因此 `make candidate-gate` 按预期拒绝，Candidate workflow 未 dispatch，未创建正式 candidate-set、artifact、attestation、tag、release 或发布资产。M3 继续保持 `in_progress`，下一工作包为 `WP-M3-PROMOTION`；`REL-LIVE-MATRIX-001` 仍未执行，也未启动校园网、QR、认证或其他真实网络会话。
 
+## 2026-08-30 Promotion 流水线收敛核验
+
+- `WP-M3-PROMOTION` 已按 docs-first 顺序冻结 closed-world canonical `promotion-lock.json`、四份 public evidence summary、精确 release notes、source→promotion 白名单与 build-input 重算契约；Promotion workflow 只接受签名 annotated `v1.0.0` 和受保护 main 当前 tip，按精确 run/artifact API、原始 artifact digest、14 文件 Candidate、两级 manifest/checksum、11-subject attestation 与四份 evidence 绑定做封闭验证。
+- Promotion 全程 no-build/no-repack：禁止 setup-go、build、package、strip、sign、clobber、单资产替换和自动 mutation 重试；只允许一次创建不可见 draft，逐项重新下载核对十个公开资产，再在同一步 mutation 前复核 gate/lock/tag/main/draft，最后一次公开并再次 fresh download 验证。stdlib verifier 及 7 组合成 happy-path/tamper 测试、workflowguard 与 CI actionlint 门禁均已落盘。
+- 本地 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check`、actionlint 与六目标 cross-build 全部通过；固定 gitleaks v8.30.1 合成 canary、签名后 50 commits 的全历史、全部 refs/reflog 与精确 209 文件工作树扫描均为 0 finding。`git fsck --full` 无损坏，仅报告 1 个 dangling blob 与 7 个 dangling tree，全部临时扫描/cache/build 路径均已清理。
+- signed implementation commit `466276fd28a855370a10ca8421117811b4e4ef13` 由 GitHub 两个 commit API 验证为 `verified=true, reason=valid`。PR #14 head CI run `33290209456` 六项 required checks 和 Native run `33290209465` 的 package 与六个平台共七个 jobs 全部成功；PR 已以普通 merge 合入 `e542f108a32e37f8313c9673cbd68254af25968c`，双亲依次为 `7660348949745ed4193a545c452097cbc91f9c92` 与 implementation head，tree 为 `0d2d0dcb9439bccc67945d1b94d367374a90f776`，GitHub 签名为 `valid`。
+- merge 后 CI run `33290459305` 六项和 Native run `33290459311` 七项再次全部成功。`make promotion-gate` 因 M0 `in_progress` 按预期拒绝；Candidate/Promotion workflow 均未 dispatch，未创建或使用正式 candidate-set、artifact、attestation、promotion lock/evidence、tag、draft、release 或发布资产，也未启动校园网、认证、QR 或其他真实网络会话。
+- `WP-M3-PROMOTION` implementation 完成；三个旧对象的 GitHub Support 外部待办完成前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，M0 仍禁止新 release。M3 也继续保持 `in_progress`；下一工作包为独立只读、无凭据且不创建 VM 的 `LAB-DISCOVER`。
+
 ## 2026-08-27 本地验收结果
 
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 均通过。
@@ -135,10 +144,10 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 ## 尚未完成与外部条件
 
 - `SEC-HISTORY-001` 仍为 `in_progress`：会话失效确认、冻结提交、受限历史备份、全 refs 重写、tag 复核、全历史复扫、atomic per-ref lease 远端更新和本机 fresh clone 已完成；GitHub Support 缓存/悬空对象清理以及其他既有副本的重新克隆仍待完成。
-- 仓库治理、只读 baseline、所有 M2 工作包、`WP-M3-LIVEGATE-SCHEMA`、`WP-M3-LIVEGATE-RUNNER` 与 `WP-M3-CANDIDATE` 均已完成；下一工作包为 `WP-M3-PROMOTION`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
+- 仓库治理、只读 baseline、所有 M2 工作包、`WP-M3-LIVEGATE-SCHEMA`、`WP-M3-LIVEGATE-RUNNER`、`WP-M3-CANDIDATE` 与 `WP-M3-PROMOTION` 均已完成；下一工作包为 `LAB-DISCOVER`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
 - 六平台原生 release-shaped asset 安装矩阵已使用同一精确临时 PR artifact 完成；该 artifact 只构成 M2 原生门禁证据，不是 M3 candidate-set、公开 release、tag 或发布资产。
 - 既有 `.github/workflows/release.yml` push runs `33259518906` 与 `33271252579` 的零-job 根因已复现并随 `WP-M3-CANDIDATE` 关闭；旧 workflow 已删除，candidate workflow 与 CI actionlint/workflowguard 门禁已合入。由于 M0 gate 仍阻断正式 dispatch，目前仍不存在可供真实验收或 promotion 使用的 M3 candidate artifact。
-- `WP-M3-CANDIDATE` 已完成并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的 candidate 构建、验证和 attestation 路径；`WP-M3-PROMOTION` 尚未实现，且尚未生成正式 candidate-set、attestation 或 promotion lock。临时 PR artifact 不得视为 candidate-set，M3 继续为 `in_progress`，M0 未完成前继续禁止新 release。
+- `WP-M3-CANDIDATE` 与 `WP-M3-PROMOTION` 已完成并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的一次构建、验证、attestation 与 no-build 原样晋升路径。由于 M0 gate 仍阻断正式 dispatch，目前尚未生成正式 candidate-set、attestation、promotion lock/evidence、tag、draft 或 release；临时 PR artifact 不得视为 candidate-set，M3 继续为 `in_progress`。下一步 `LAB-DISCOVER` 只做 ZOS 只读能力检查，不创建 VM、不切线、不启动认证。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 
 ## 当前已知能力限制

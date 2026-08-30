@@ -12,9 +12,9 @@ snapshot_at: 2026-08-30
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`WP-M3-PROMOTION`（`in_progress`；base main `7660348949745ed4193a545c452097cbc91f9c92`；docs-first 契约、实现与本地门禁已完成，正进入签名提交/PR 检查点；M0 gate 仍阻断正式 Candidate 与发布）。
-- 修改边界：按 [`REL-PROMOTION-001`](../docs/operations/release.md#rel-promotion-001promotion-lock-与原样发布) 与 [ADR-0007](../docs/architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 先在 docs 中消除 promotion lock、签名 tag、artifact/attestation、draft/re-download 的封闭验证歧义，再只修改 promotion workflow、lock/发布验证实现、对应 Makefile/内部命令与合成测试、workflowguard。禁止修改公共 SDK/CLI/JSON/退出码、candidate/live-gate/安装器、ruleset，禁止 dispatch Candidate/promotion，禁止创建或使用正式 artifact、tag、draft、release 或发布资产，禁止启动真实网络/认证/QR/校园网会话。
-- 停止条件：任一 ref/SHA、ruleset、签名、required check 或工作树漂移；docs 无法唯一确定 closed-world lock、tag/attestation 或 no-build draft 安全语义；需要真实 Candidate/evidence、tag/draft/public release、改变 main/tag 保护、修改边界外产品文件、启动真实会话、接触凭据/原始输出、force-push，或接触旧工作区、敏感备份、rewrite mirror 时立即停止。
+- 工作包：`WP-M3-PROMOTION`（implementation `complete`；signed head `466276fd28a855370a10ca8421117811b4e4ef13` 已由 PR #14 普通合入 main `e542f108a32e37f8313c9673cbd68254af25968c`；当前仅提交收尾事实记录，M0 gate 继续阻断正式 Candidate 与发布）。
+- 修改边界：本收尾分支只允许更新 `docs/upgrade/status.md` 与 `agent/handoff.md`，记录 Promotion 契约/实现、本地门禁、签名提交、PR/merge 与 merge 后 CI/Native 事实；禁止修改 workflow、产品/测试代码、公共契约、candidate/live-gate/安装器或 ruleset，禁止 dispatch Candidate/Promotion，禁止创建或使用正式 artifact、attestation、tag、draft、release 或发布资产，禁止启动真实网络/认证/QR/校园网会话。
+- 停止条件：任一 ref/SHA、ruleset、签名、required check 或工作树漂移；收尾事实无法由已完成日志复现；需要修改两文件以外内容、dispatch workflow、创建正式 Candidate/evidence/tag/draft/public release、改变 main/tag 保护、启动真实会话、接触凭据/原始输出、force-push，或接触旧工作区、敏感备份、rewrite mirror 时立即停止。
 
 ## 已完成
 
@@ -36,7 +36,7 @@ snapshot_at: 2026-08-30
 - `WP-M3-LIVEGATE-SCHEMA`：docs-first schema version 1 已固定严格 18/5 JSON、封闭枚举与环境矩阵、ID/hash/time、capability transition、primary prefix/cleanup/result 和产品/runner 退出码映射，并实现 direct JSON guards 与泄漏测试；focused coverage 为 94.3%。signed implementation commit `03ffa893dce68bf83886ca047b2c9c5760a351b9` 由 GitHub 验证为 `valid`；PR #8 已以普通 merge 合入 `01e4dc59bd7787cb382e9d2392f7e6c3052a569b`，双亲为 `0aaff5da9ac691bcb56538074a0b3c178b140808` 与 `03ffa893dce68bf83886ca047b2c9c5760a351b9`，tree 为 `6fa99e2f23efa0ef2ac6d1b269b52bcda0514148`，GitHub 签名为 `valid`。merge 后 CI run `33259519538` 六项和 native run `33259519515` 七项全部成功；本地 test/race/vet/doccheck、固定 gitleaks `8.30.1` 合成 canary/28 commits 全历史/全部 refs/reflog/工作树零命中与 `git fsck --full` 均通过，fsck 仅报告四个已知 dangling tree。未实现 runner、candidate、release/tag，也未启动校园网或其他网络会话。
 - `WP-M3-LIVEGATE-RUNNER`：maintainer-only runner、冻结 candidate/manifest/hash 绑定、固定 suite 状态机与清理权、私有三文件 evidence bundle、durability 与泄漏门禁已实现。signed commits `e5528f46792f7d9d3d087b2b59196106d6856976` 与 `80462712f872519da73526927476fdad69edee32` 均由 GitHub 验证为 `valid`；PR #10 head CI run `33271001499` 六项和 native run `33271001474` 七项全部成功，并以普通 merge 合入 `6196234374f72089affd5442d0b5c2c0193cf62d`，双亲、tree `b9383072cd8c32bf1f0aafd6596b4a6c0ae86077` 与 GitHub 签名均已精确复验。merge 后 CI run `33271253178` 六项和 native run `33271253166` 七项全部成功；本地 test/race/vet/doccheck、跨平台编译、固定 gitleaks canary/全历史/工作树扫描和 `fsck` 通过。未创建 candidate/release/tag，也未启动校园网或其他真实会话。
 - `WP-M3-CANDIDATE`：旧 release workflow 零-job 根因已由 actionlint v1.7.12 精确复现并关闭；full/release manifest、build-input、确定性六平台归档、公开资产/私有 helper 分区、同一 artifact 原生安装及 11-subject attestation 路径已实现。signed commits `74cb8f6e8dab02b2d1d935640acdb885ea19ff77` 与 `73f5aa30a29aebb60970319ea378bb20b62bdf06` 均由 GitHub 验证为 `valid`；PR #12 head CI `33282461292` 六项与 Native `33282461260` 七项成功，并以普通 merge 合入 `382a8f994761a4a5d73f578d08f263718eac958c`，双亲、tree `0206c0a06d3c8c46fc1225c5440d8a61b7ad2554` 与签名已精确复验。merge 后 CI `33282708893` 六项与 Native `33282708924` 七项再次成功；本地 test/race/vet/doccheck、actionlint、跨平台编译、固定 gitleaks canary/全历史/205 文件工作树扫描和 `fsck` 通过。M0 gate 按预期阻断正式 dispatch，未创建 candidate artifact/attestation/release/tag，也未启动真实会话。
-- `WP-M3-PROMOTION` 本地检查点：closed-world lock/public summary/canonical notes 与 no-build 原样晋升契约已冻结，Promotion workflow、stdlib verifier、7 组完整合成测试和 workflowguard 已实现；actionlint、doccheck、全仓 test/race/vet 与六目标 cross-build 通过。固定 gitleaks v8.30.1 canary、49 commits 的全历史/全部 refs/reflog 与精确 209 文件工作树扫描均为 0 finding；`git fsck --full` 无损坏，仅有 1 个 dangling blob 与 7 个 dangling tree。`make promotion-gate` 因 M0 `in_progress` 按预期拒绝；未 dispatch workflow，未创建/使用正式 Candidate、artifact、attestation、tag、draft、release 或真实会话。
+- `WP-M3-PROMOTION`：closed-world lock/public summary/canonical notes 与 no-build 原样晋升契约、Promotion workflow、stdlib verifier、7 组合成测试和 workflowguard 已实现；本地 test/race/vet/doccheck/actionlint/六目标 cross-build、固定 gitleaks canary/50 commits 全历史/全部 refs/reflog/209 文件工作树零 finding 与 `fsck` 均通过。signed commit `466276fd28a855370a10ca8421117811b4e4ef13` 由 GitHub 验证为 `valid`；PR #14 head CI `33290209456` 六项和 Native `33290209465` 七项成功，并以普通 merge 合入 `e542f108a32e37f8313c9673cbd68254af25968c`，双亲、tree `0d2d0dcb9439bccc67945d1b94d367374a90f776` 与签名已精确复验。merge 后 CI `33290459305` 六项与 Native `33290459311` 七项再次成功；M0 gate 按预期拒绝，未 dispatch workflow，未创建/使用正式 Candidate、artifact、attestation、tag、draft、release 或真实会话。
 - Signing key 登记后，`15fb31d`、`c562483`、`5bee31b`、`f1ca77c` 与 `907b3e7` 当前均由 GitHub 验证为 `verified=true, reason=valid`；不得为追溯修正签名状态而改写历史。
 
 ## 阻塞
@@ -46,6 +46,6 @@ snapshot_at: 2026-08-30
 
 ## 下一步
 
-- 对 GitHub 身份、repository/main SHA、branch collision、origin、rulesets 与本地签名配置做最终只读漂移复核；无漂移后只暂存本工作包的 10 个文件并创建 SSH 签名提交。
-- 正常 push 当前分支并创建 PR，等待严格六项 required checks 及被触发的 Native workflow；普通合并并精确复验 merge 后，再以独立收尾 PR 更新正式状态，随后进入 `LAB-DISCOVER`。
+- 只暂存 `docs/upgrade/status.md` 与 `agent/handoff.md`，创建并验证 SSH 签名收尾提交；正常 push 当前分支、创建 PR，等待严格六项 required checks 与被触发的 Native workflow 后普通合并。
+- 收尾 merge 精确复验后，按 docs-first 开始 `LAB-DISCOVER`；该工作包只做匿名、只读、无凭据的实验室能力/拓扑发现，任何真实认证或需维护者私有交互的步骤前停止。
 - 三个旧对象继续作为外部 GitHub Support 待办搁置；完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。
