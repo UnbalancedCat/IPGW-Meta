@@ -922,6 +922,36 @@ func TestStatusRejectsOversizedAndRedirectedResponses(t *testing.T) {
 	}
 }
 
+func TestStatusUnrecognizedResponseIdentifiesGatewayStatusProtocolPart(t *testing.T) {
+	const responseCanary = "STATUS-DIAGNOSTIC-CANARY"
+	roundTrips := 0
+	client, err := NewClient(WithRoundTripper(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		roundTrips++
+		return testResponse(request, http.StatusOK, "<html><body>"+responseCanary+"</body></html>", ""), nil
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Status(context.Background())
+	var sdkErr *Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != CodeProtocolChanged {
+		t.Fatalf("Status() error = %v, code=%q", err, CodeOf(err))
+	}
+	if got := sdkErr.Details.ProtocolPart; got != "gateway_status" {
+		t.Fatalf("protocol part = %q, want gateway_status", got)
+	}
+	if roundTrips != 1 {
+		t.Fatalf("round trips = %d, want 1", roundTrips)
+	}
+	encoded, marshalErr := json.Marshal(sdkErr)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if strings.Contains(string(encoded), responseCanary) {
+		t.Fatal("raw status response leaked through SDK error JSON")
+	}
+}
+
 func TestContextCancellationIsPreserved(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

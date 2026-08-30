@@ -72,6 +72,8 @@ unsupported       internal
 
 身份不匹配时 details 可包含 expected/actual username 供直接业务调用者处理，但 CLI、日志和 evidence 必须按安全策略决定是否呈现，默认不得记录账号。
 
+产品实现只允许向 `ErrorDetails.ProtocolPart` 写入固定脱敏枚举 `cas_login`、`cas_qr`、`gateway_status`、`gateway_activation`、`gateway_logout` 与 `redirect`；CLI 公共 JSON 边界必须清空未知值。网关状态响应因格式无法识别而返回 `protocol_changed` 时使用 `gateway_status`，不得在 details 中加入 URL、header、body、账号、IP 或其他上游内容。
+
 ## SDK-INTERACTION-001：人工挑战
 
 ```go

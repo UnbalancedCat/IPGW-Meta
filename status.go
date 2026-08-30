@@ -35,7 +35,7 @@ func (c *Client) status(ctx context.Context, client *http.Client) (Status, error
 	if err != nil {
 		if errors.Is(err, srun.ErrUnrecognized) {
 			protocolErr := newError(CodeProtocolChanged, "gateway status format is not recognized", false, err)
-			protocolErr.Details.ProtocolPart = "status"
+			protocolErr.Details.ProtocolPart = "gateway_status"
 			return Status{}, protocolErr
 		}
 		return Status{}, wrapError(CodeProtocolChanged, "could not parse gateway status", false, err)
