@@ -922,6 +922,30 @@ func TestStatusRejectsOversizedAndRedirectedResponses(t *testing.T) {
 	}
 }
 
+func TestStatusLegacyCSVRetainsIdentityWhenSummaryIsUnavailable(t *testing.T) {
+	roundTrips := 0
+	client, err := NewClient(WithRoundTripper(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		roundTrips++
+		return testResponse(request, http.StatusOK, `alice,a,b,c,d,e,opaque,opaque,10.0.0.10`, ""), nil
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observedAt := time.Unix(123, 0).UTC()
+	client.now = func() time.Time { return observedAt }
+
+	status, err := client.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.Network != NetworkReachable || status.Session != SessionOnline || status.Username != "alice" || status.OnlineIP != netip.MustParseAddr("10.0.0.10") || !status.ObservedAt.Equal(observedAt) || status.Summary != nil {
+		t.Fatalf("Status() = %#v", status)
+	}
+	if roundTrips != 1 {
+		t.Fatalf("round trips = %d, want 1", roundTrips)
+	}
+}
+
 func TestStatusUnrecognizedResponseIdentifiesGatewayStatusProtocolPart(t *testing.T) {
 	const responseCanary = "STATUS-DIAGNOSTIC-CANARY"
 	roundTrips := 0

@@ -130,20 +130,58 @@ func TestParseStatusBalanceIsExactMinorUnits(t *testing.T) {
 }
 
 func TestParseStatusLegacyCSV(t *testing.T) {
-	status, err := ParseStatus([]byte(`alice,a,b,c,d,e,2048,60,10.0.0.10,j,k,8.50`))
-	if err != nil || !status.Online || status.Username != "alice" || status.OnlineIP.String() != "10.0.0.10" || status.Summary == nil || status.Summary.TrafficBytes != 2048 || status.Summary.BalanceMinor == nil || *status.Summary.BalanceMinor != 850 {
-		t.Fatalf("CSV status = %#v, %v", status, err)
+	t.Run("complete summary", func(t *testing.T) {
+		status, err := ParseStatus([]byte(`alice,a,b,c,d,e,2048,60,10.0.0.10,j,k,8.50`))
+		if err != nil || !status.Online || status.Username != "alice" || status.OnlineIP.String() != "10.0.0.10" || status.Summary == nil || status.Summary.TrafficBytes != 2048 || status.Summary.DurationSeconds != 60 || status.Summary.BalanceMinor == nil || *status.Summary.BalanceMinor != 850 {
+			t.Fatalf("CSV status = %#v, %v", status, err)
+		}
+	})
+
+	t.Run("summary without balance", func(t *testing.T) {
+		status, err := ParseStatus([]byte(`alice,a,b,c,d,e,2048,60,10.0.0.10`))
+		if err != nil || !status.Online || status.Summary == nil || status.Summary.TrafficBytes != 2048 || status.Summary.DurationSeconds != 60 || status.Summary.BalanceMinor != nil {
+			t.Fatalf("CSV status = %#v, %v", status, err)
+		}
+	})
+
+	t.Run("summary with empty balance", func(t *testing.T) {
+		status, err := ParseStatus([]byte(`alice,a,b,c,d,e,2048,60,10.0.0.10,j,k,`))
+		if err != nil || !status.Online || status.Summary == nil || status.Summary.TrafficBytes != 2048 || status.Summary.DurationSeconds != 60 || status.Summary.BalanceMinor != nil {
+			t.Fatalf("CSV status = %#v, %v", status, err)
+		}
+	})
+
+	for _, testCase := range []struct {
+		name  string
+		input string
+	}{
+		{name: "empty summary", input: `alice,a,b,c,d,e,,,10.0.0.10`},
+		{name: "opaque summary", input: `alice,a,b,c,d,e,opaque,opaque,10.0.0.10`},
+		{name: "partial traffic", input: `alice,a,b,c,d,e,1,opaque,10.0.0.10`},
+		{name: "partial duration", input: `alice,a,b,c,d,e,opaque,2,10.0.0.10`},
+		{name: "negative traffic", input: `alice,a,b,c,d,e,-1,2,10.0.0.10`},
+		{name: "fractional duration", input: `alice,a,b,c,d,e,1,2.5,10.0.0.10`},
+		{name: "exponent duration", input: `alice,a,b,c,d,e,1,1e2,10.0.0.10`},
+		{name: "traffic overflow", input: `alice,a,b,c,d,e,9223372036854775808,2,10.0.0.10`},
+		{name: "invalid balance", input: `alice,a,b,c,d,e,1,2,10.0.0.10,j,k,12.3456`},
+		{name: "balance overflow", input: `alice,a,b,c,d,e,1,2,10.0.0.10,j,k,92233720368547758.08`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			status, err := ParseStatus([]byte(testCase.input))
+			if err != nil || !status.Online || status.Username != "alice" || status.OnlineIP.String() != "10.0.0.10" || status.Summary != nil {
+				t.Fatalf("CSV status = %#v, %v", status, err)
+			}
+		})
 	}
 
 	for _, input := range []string{
 		`alice,a,b,c,d,e,1,2`,
-		`alice,a,b,c,d,e,bad,2,10.0.0.10`,
-		`alice,a,b,c,d,e,-1,2,10.0.0.10`,
-		`alice,a,b,c,d,e,1,2.5,10.0.0.10`,
-		`alice,a,b,c,d,e,1,1e2,10.0.0.10`,
 		`alice,a,b,c,d,e,1,2,127.0.0.1`,
+		`alice,a,b,c,d,e,1,2,2001:db8::1`,
 		`bad user,a,b,c,d,e,1,2,10.0.0.10`,
-		`alice,a,b,c,d,e,1,2,10.0.0.10,j,k,12.3456`,
+		`,a,b,c,d,e,1,2,10.0.0.10`,
+		`alice,a,b,c,d,"unterminated,1,2,10.0.0.10`,
+		"alice,a,b,c,\"line\nbreak\",e,1,2,10.0.0.10",
 		"alice,a,b,c,d,e,1,2,10.0.0.10\nbob,a,b,c,d,e,1,2,10.0.0.11",
 	} {
 		requireUnrecognizedStatus(t, input)
