@@ -94,9 +94,39 @@ Candidate ID 为 `v1.0.0-<SOURCE_SHA12>-<RUN_ID>.<RUN_ATTEMPT>`。单一 GitHub 
 
 workflow 记录 artifact ID、artifact digest、run ID/attempt，并为 candidate-set 和每个公开 release asset 生成 GitHub provenance attestation。本地只读副本不能替代 GitHub artifact；artifact 不可用、attestation 无法验证、hash 不符或构建输入变化时，候选失效，所有真实测试必须对新候选重做。
 
+### Full candidate-manifest v1
+
+`candidate-manifest.json` 的 full validator 是 closed-world。顶层按以下顺序精确包含 14 个字段：`schema_version`、`plan_id`、`revision`、`version`、`candidate_id`、`source_commit`、`source_tree`、`workflow_run_id`、`workflow_run_attempt`、`toolchain`、`build_input_sha256`、`release_assets`、`test_tools`、`live_gate_targets`。未知、缺失或重复字段均拒绝；任意嵌套层的 duplicate key、无效 UTF-8、第二个 JSON value、非空白尾随字节和超过 64 KiB 均拒绝。生成器只输出按上述字段顺序编码的紧凑 JSON，末尾恰好一个 LF；full validator 必须拒绝不等于该 canonical 编码的字节。`candidate_set_sha256` 是这些精确字节的外部派生值，不得写回 manifest 形成自引用。
+
+`schema_version` 固定为 `1`；plan/revision/version 固定为 `IPGW-META-V1`、`2026-08-28-r2`、`v1.0.0`。`source_commit`、`source_tree` 是 40 位小写十六进制；tree 必须等于 source commit 的 Git tree。run ID 与 attempt 是无前导零的正 JSON 整数，并与 candidate ID 中的值完全相同。
+
+`toolchain` 精确包含 `go_version`、`go_toolchain`、`host_platform`、`cgo_enabled`、`goamd64`、`goarm64`、`source_date_epoch`、`build_recipe`，依次固定为当前 `go.mod` 的 `go` 版本带 `go` 前缀、`local`、`linux-amd64`、`false`、`v1`、`v8.0`、source commit 的正 Unix committer timestamp 和 `candidate-v1`。`candidate-v1` 使用 `CGO_ENABLED=0`，六个固定 GOOS/GOARCH，产品入口使用 `-trimpath -buildvcs=false -ldflags "-s -w -X main.version=v1.0.0"`，helper 使用相同 build flags 和 `-ldflags "-s -w"`。十八个产品输出和两个 helper 各构建一次；归档、原生测试、attestation 和 promotion 只能消费这些冻结输出，不得再次 build。
+
+`build_input_sha256` 覆盖 source commit 中除 promotion 白名单外的全部 tracked regular file。白名单精确为 `docs/evidence/releases/v1.0.0/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`；不得扩大到整个 `docs/evidence/**`。只接受 Git mode `100644`、`100755`，拒绝 symlink、submodule、特殊 mode 和无效 UTF-8 path；path 的 UTF-8 字节长度必须在 1..4096。path 按原始 UTF-8 字节升序，每项编码为 `<path>NUL<mode>NUL<decimal-size>NUL<content-sha256>LF`，连接后计算 SHA-256。tree listing 与 blob 必须限界、流式处理，不得在校验大小前无界载入内存。版本与 toolchain 由同一 manifest 的独立字段绑定；任何非白名单 tracked path 的增加、删除、改名、mode 或内容变化都必须改变 build-input digest。
+
+`release_assets` 和 `test_tools` 的成员精确为 `name`、`platform`、`size`、`sha256`。name 是 ASCII POSIX 相对路径；拒绝绝对路径、反斜线、`.`/`..` segment、控制字符、重复或大小写折叠冲突。size 是正整数，SHA 是 64 位小写十六进制，数组按 name 的原始字节升序。platform 只允许六个构建 target 以及 `unix`、`windows`、`all`。
+
+公开数组精确包含十项：六个 `release/ipgw-meta-<target>` bundle、`release/install.sh`、`release/install.ps1`、`release/release-manifest.json`、`release/SHA256SUMS`。私有数组精确包含 `test-tools/ipgw-live-gate-linux-amd64` 和 `test-tools/ipgw-live-gate-windows-amd64.exe`；这里的“私有”表示 maintainer-only、不得发布，不表示 GitHub Actions artifact 是秘密存储。artifact 物理树只能再包含根 `candidate-manifest.json` 与根 `SHA256SUMS`，共 14 个普通文件，不得出现 symlink、hardlink、special file 或额外成员。
+
+`live_gate_targets` 保持 [`REL-LIVEGATE-001`](live-validation.md#rel-livegate-001runner-接口与信任边界) 的固定顺序。Linux target 的 size/hash 必须同时等于 `release/ipgw-meta-linux-amd64.tar.gz` 内 `ipgw-meta` 的实际字节与 inner `bundle-manifest.json` entry；Windows target 对应 Windows amd64 ZIP 内 `ipgw-meta.exe`。传输时从这两个固定 archive member 提取产品 candidate，不增加第二份产品构建；同平台 helper 必须与 `test_tools` 记录一致。
+
+### Release manifest、归档与 checksums
+
+`release/release-manifest.json` 也是 closed-world canonical JSON，字段顺序精确为 `schema_version`、`plan_id`、`revision`、`version`、`candidate_id`、`source_commit`、`source_tree`、`build_input_sha256`、`release_sha256sums_sha256`、`assets`。`assets` 只列六个 bundle 和两个 installer，使用 basename、上述 platform/size/hash 结构并按 name 排序；不列 manifest 自身或 checksums。`release_sha256sums_sha256` 绑定下述 8 行 checksum 文件。
+
+`release/SHA256SUMS` 必须继续精确覆盖六个 bundle 和两个 installer；这是在线安装器的 closed allowlist，不得加入 release manifest。根 `SHA256SUMS` 精确覆盖 candidate manifest、十个公开资产和两个 helper，不自哈希。两者均按 POSIX 相对名称原始字节升序，以 `<64-lowerhex><two-spaces><name><LF>` 编码。
+
+归档由仓库内 Go packager 生成，不依赖宿主 `tar`、`gzip` 或 `zip`。tar 固定 USTAR、member 顺序、uid/gid 0、用户名/组名空、mode、无扩展 header，gzip 固定 deflate、空 name/comment、UTC 与 timestamp；tar/gzip member mtime 精确使用 `source_date_epoch`。ZIP 固定 member 顺序、creator/mode、deflate method、空 extra/comment，并将 `source_date_epoch` 向下截断到 ZIP UTC DOS timestamp 的固定 2 秒精度。binary mode 为 `0755`，公开 metadata 为 `0644`，文本为 LF。相同 source/version/toolchain/build-input 必须生成逐字节相同的八个公开 payload；不同 run/attempt 只允许 candidate/release manifest、根 checksum 与 artifact identity 相应变化。
+
+### Artifact 与 attestation
+
+artifact name 固定为 `candidate-set-<candidate_id>`，upload 必须 `overwrite: false`、不做额外压缩，并只上传上述精确树。上传后记录的 artifact ID 必须为正整数，digest 规范化为 `sha256:<64-lowerhex>`；还必须通过 GitHub API 回读并匹配 repository、workflow、run ID、attempt、name、digest 与 `expired=false`。这些上传后值只进入 workflow output/summary 和后续 promotion lock，不得修改或二次上传 candidate manifest。
+
+provenance 精确覆盖十一个 subject：candidate-set subject 使用 artifact 的固定 name 与服务端 digest；十个公开 release asset 使用最终公开 basename 与其文件 digest。不得把 `test_tools` 或根 checksum 当作公开 subject。验证必须同时约束 repository、workflow、source commit、run ID/attempt；只匹配 digest 不足以通过。attestation 前必须按精确 artifact ID 重新下载并完成 full manifest、两级 checksum、所有成员与 runner projection 验证；任一失败不得产生可接受候选。
+
 ## REL-PROMOTION-001：Promotion lock 与原样发布
 
-promotion lock 位于 `docs/evidence/releases/v1.0.0/promotion-lock.json`，绑定 version、candidate/source、workflow/artifact、candidate-set/release-manifest/build-input digest、attestation subjects 和已审阅 evidence IDs。candidate source 与最终 tag 之间只允许修改 `docs/evidence/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`；其他变化使候选失效。
+promotion lock 位于 `docs/evidence/releases/v1.0.0/promotion-lock.json`，绑定 version、candidate/source、workflow/artifact、candidate-set/release-manifest/build-input digest、attestation subjects 和已审阅 evidence IDs。candidate source 与最终 tag 之间只允许修改 `docs/evidence/releases/v1.0.0/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`；其他变化使候选失效。
 
 最终 tag 必须是维护者用专用 Ed25519 key 创建、指向 promotion commit 的 SSH 签名 annotated `v1.0.0`。私钥只存在本地 Windows 用户环境；公钥登记为 GitHub signing key。promotion job 必须通过 GitHub API 验证 tag signature valid/verified，并且：
 

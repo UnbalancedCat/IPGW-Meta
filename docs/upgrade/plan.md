@@ -307,7 +307,7 @@ candidate-set/
     ipgw-live-gate-windows-amd64.exe
 ```
 
-`test-tools` 是私有候选测试工具，不是公开 release asset。根 manifest 分列 `release_assets` 与 `test_tools`，并包含 plan/revision、version、candidate ID、source commit/tree、Go/toolchain、build-input digest、每个文件的 hash/size/platform。六个平台、三入口和两个 helper 各只构建一次；使用确定性归档和独立 SHA-256。GitHub 上传单一不可变 artifact，记录 artifact ID、artifact digest、run ID/attempt，并为 candidate-set 与每个公开资产生成 provenance attestation。本地 Windows 可保存只读副本，但不能替代 GitHub artifact；artifact 不可用、attestation 失败、hash 不符或构建输入变化时必须废弃候选并重做真实测试。
+`test-tools` 是私有候选测试工具，不是公开 release asset。根 manifest 分列 `release_assets` 与 `test_tools`，并包含 plan/revision、version、candidate ID、source commit/tree、Go/toolchain、build-input digest、每个文件的 hash/size/platform；full schema、canonical bytes、build-input 算法、归档元数据、两级 checksums 与 attestation subjects 以 [`REL-ATTEST-001`](../operations/release.md#rel-attest-001candidate-manifest-与-provenance) 为唯一规范。六个平台、三入口和两个 helper 各只构建一次；使用确定性归档和独立 SHA-256。GitHub 上传单一不可变 artifact，记录 artifact ID、artifact digest、run ID/attempt，并为 candidate-set 与每个公开资产生成 provenance attestation。本地 Windows 可保存只读副本，但不能替代 GitHub artifact；artifact 不可用、attestation 失败、hash 不符或构建输入变化时必须废弃候选并重做真实测试。
 
 ### 4.3 live-gate
 
@@ -398,7 +398,7 @@ QR 只要求 NAS 完成一次。异账号 conflict/switch 只做合成测试，�
 
 `docs/evidence/releases/v1.0.0/promotion-lock.json` 至少记录 schema/version、candidate ID、source commit/tree、workflow run ID/attempt、artifact ID/digest、candidate-set/release-manifest/build-input SHA-256、attestation subjects 和 evidence IDs；`release-notes.md` 与其同目录。
 
-candidate source 与最终 tag 之间只允许修改 `docs/evidence/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`。任何 Go、module、installer、workflow、Makefile、release script、doccheck 构建输入或其他文件变化都会废弃候选。
+candidate source 与最终 tag 之间只允许修改 `docs/evidence/releases/v1.0.0/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`。任何 Go、module、installer、workflow、Makefile、release script、doccheck 构建输入或其他文件变化都会废弃候选。
 
 ### 5.5 SSH 签名与最终发布
 
