@@ -12,9 +12,9 @@ snapshot_at: 2026-08-31
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：`LAB-DISCOVER` legacy CSV parser compatibility（docs-first；基线为 main `ea152221813020578c69bdfb604cc07ec00edcbe`）。
-- 修改边界：先只允许修改本文件、`docs/architecture/protocol-correctness.md`、`internal/srun/status.go`、`internal/srun/status_test.go` 与 `sdk_test.go` 的纯合成 `status` 边界测试；完成门禁后才允许更新 `docs/upgrade/status.md`。不得改变公共 SDK/CLI/JSON/退出码、endpoint、transport、请求次数或脱敏边界，不得创建 Candidate/artifact/attestation/tag/release，不得进入 `LAB-PROVISION`，也不得发起任何真实校园网请求。
-- 停止条件：实现需要猜测未知字段、返回部分 summary、放宽未知/部分/冲突的身份或结构形状，或出现预期外 tracked 文件、main/远端 refs/已知 rulesets 漂移、签名或 required checks 失败、PR 需要 bypass/admin/force 操作时立即停止。legacy CSV 可选 summary 不构成完整候选时只允许整体降级为 `nil`。M0、[`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M3 必须继续保持 `in_progress`。
+- 工作包：`LAB-DISCOVER` legacy CSV parser compatibility docs-only closeout（基线为 main `2348f9a0bf208e56303222e03c0137618ff700fb`）。
+- 修改边界：仅允许修改本文件与 `docs/upgrade/status.md`，运行本地门禁，创建签名提交并执行正常 branch push、PR、required CI 与普通非管理员合并。不得修改产品代码、公共 SDK/CLI/JSON/退出码、解析器、endpoint、transport 或请求次数，不得创建 Candidate/artifact/attestation/tag/release，不得进入 `LAB-PROVISION`，也不得发起任何真实校园网请求。
+- 停止条件：出现预期外 tracked 文件、main/远端 refs/已知 rulesets 漂移、签名或 required checks 失败、PR 需要 bypass/admin/force 操作时立即停止。M0、[`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M3 必须继续保持 `in_progress`。
 
 ## 已完成
 
@@ -48,7 +48,8 @@ snapshot_at: 2026-08-31
 - 请求后 postflight 通过；未采集、保存或输出正文、响应头、URL、账号、IP、SSID/MAC、接口名、Clash 配置或原始 stdout/stderr。本地 helper source/binary、WSL staging 与 Windows 受保护 helper 目录均已按精确目标清理，旧 exact-main 产品 binary 与受保护空配置未改动。
 - docs-only closeout tree 的 test/race/vet/doccheck 均通过；固定 gitleaks `v8.30.1` 合成 canary、40 commits 全历史/全部 refs/reflog 与工作树扫描均为 0 finding。`git fsck --full` 无损坏或 dangling commit，仅报告 1 个 dangling blob 与 14 个 dangling tree。
 - docs-only closeout signed commit `0594695f54b3bbf24134e0252fa91801ca99f41b` 经 PR #18 的 CI run `33322272798` 六项 required checks 与 Native run `33322272778` 七项全部成功后，以普通 merge 合入 main `ea152221813020578c69bdfb604cc07ec00edcbe`；merge 双亲、tree `9c6b657df540036915879a199306b2c46dbef702` 与 GitHub 签名均已精确复验，merge 后 CI run `33322516872` 六项与 Native run `33322516881` 七项再次全部成功。
-- legacy CSV compatibility 已按 docs-first 边界完成本地实现：合法 username/全局单播 IPv4 先建立 online 身份，位置 6/7/11 仅形成 all-or-nothing 可选 summary；无效或部分候选整体降级为 `nil`，JSON/JSONP 显式 summary 的 fail-closed 行为不变。内部解析器与公共 SDK 聚焦普通/race 测试、全量 test/race/vet/doccheck 均通过；固定 gitleaks `v8.30.1` canary、41 commits 全历史/refs/reflog 与工作树扫描为 0 finding，`fsck` 无损坏或 dangling commit，仅有既有 1 blob/14 trees。远端 PR/merge 集成仍待完成，未发起新的校园网请求。
+- legacy CSV compatibility 已按 docs-first 边界完成：合法 username/全局单播 IPv4 先建立 online 身份，位置 6/7/11 仅形成 all-or-nothing 可选 summary；无效或部分候选整体降级为 `nil`，JSON/JSONP 显式 summary 的 fail-closed 行为不变。内部解析器与公共 SDK 聚焦普通/race 测试、全量 test/race/vet/doccheck 均通过；固定 gitleaks `v8.30.1` canary、41 commits 全历史/refs/reflog 与工作树扫描为 0 finding，`fsck` 无损坏或 dangling commit，仅有既有 1 blob/14 trees。signed implementation commit `dd7b563936a6c2472896fc4e2fd288e5d0cae536` 经 PR #19 的 CI run `33323660497` 六项 required checks 与 Native run `33323660534` 七项全部成功后，以普通 merge 合入 main `2348f9a0bf208e56303222e03c0137618ff700fb`；merge 双亲、tree `51abf026059e6a4e005952306ad046d785326764` 与 GitHub 签名均已精确复验，merge 后 CI run `33323891972` 六项与 Native run `33323892073` 七项再次全部成功。未发起新的校园网请求。
+- parser compatibility docs-only closeout tree 的 test/race/vet/doccheck 全部通过；固定 gitleaks `v8.30.1` 合成 canary、42 commits 全历史/refs/reflog 与工作树扫描均为 0 finding。`git fsck --full` 无损坏或 dangling commit，仅报告既有 1 个 dangling blob 与 14 个 dangling tree。
 - Signing key 登记后，`15fb31d`、`c562483`、`5bee31b`、`f1ca77c` 与 `907b3e7` 当前均由 GitHub 验证为 `verified=true, reason=valid`；不得为追溯修正签名状态而改写历史。
 
 ## 阻塞
@@ -56,11 +57,11 @@ snapshot_at: 2026-08-31
 - GitHub 对象 API 仍可访问 3 个已失去 ref 可达性的旧 commit；维护者需按 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 向 GitHub Support 请求清理缓存/悬空对象。
 - 三个旧对象按维护者决定暂时搁置；该外部事项不阻塞本轮仓库治理与 baseline，但完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 和 M0 必须继续保持 `in_progress`。
 - `LAB-DISCOVER` 当前 `blocked`：需维护者提供非唯一性的极空间设备型号与 ZOS 版本，并在已登录的私有界面打开网络模式和虚拟机网卡只读设置；Agent 只读取能力选项，不读取账号、NetworkID、完整 IP/MAC，不保存截图，也不点击保存或创建。
-- BHK 匿名阶段 B 继续 fail closed：最小诊断已把有线 exact-main bound `status` 的 `protocol_changed` 缩小到现有 legacy CSV 解析兼容性，但按 [`REL-LIVEGATE-002`](../docs/operations/live-validation.md#rel-livegate-002suite-状态机与清理权) 仍属于 fail，不能继续认证或把它降级为网络波动；Wi-Fi 额度未消耗。解析兼容本地实现必须先经签名 PR 与 merge 后 CI 合入 main，之后下一次真实有线 `status` 仍需新的单请求批准。Agent 不读取 controller secret，不自动调用 RealVNC、NAS SSH 或 NAS 旧 ipgw 恢复校园网会话。
+- BHK 匿名阶段 B 继续 fail closed：最小诊断已把有线 exact-main bound `status` 的 `protocol_changed` 缩小到 legacy CSV 解析兼容性，兼容修复现已合入 main 并通过 merge 后 CI，但先前 live 结果仍按 [`REL-LIVEGATE-002`](../docs/operations/live-validation.md#rel-livegate-002suite-状态机与清理权) 属于 fail，不能继续认证或外推成功；Wi-Fi 额度未消耗。下一次真实有线 `status` 需要维护者新的单请求批准。Agent 不读取 controller secret，不自动调用 RealVNC、NAS SSH 或 NAS 旧 ipgw 恢复校园网会话。
 
 ## 下一步
 
 - NAS 路径继续 fail closed；若以后恢复，仍只读确认 ZOS 能否同时提供管理 vNIC、独立测试物理口 vNIC，以及宿主测试口无 IP/DHCP/default route，不使用非官方修改。
 - signed closeout commit `56af8a11ec4de927a66ef00457e7b9f5a08c9501` 经 PR #17 的 CI run `33312284083` 六项与 Native run `33312284095` 七项全部成功后，以普通 merge 合入 main `1d6e9e00992b1b2c245edf452a29cdd5d8b668fd`；merge 双亲、tree `6ef170432ab0670c1251e913e8597c0dedecd509` 与 GitHub 签名均已精确复验，merge 后 CI run `33312524870` 六项与 Native run `33312524845` 七项再次全部成功。main/tag ruleset 与 refs 未漂移，远端 topic branch 保留。
-- 下一步为当前 legacy CSV compatibility tree 创建签名提交，正常 push 当前 topic branch，创建 PR，等待 required CI 与 Native checks，通过普通非管理员 merge 合入 main，并复验双亲、tree、签名、rulesets 与 refs；不得 bypass、force-push 或发起任何校园网请求。
+- 下一步先完成本次 docs-only closeout：创建签名提交，正常 push 当前 topic branch，创建 PR，等待 required CI 与 Native checks，通过普通非管理员 merge 合入 main，并复验双亲、tree、签名、rulesets 与 refs；不得 bypass、force-push 或发起任何校园网请求。
 - 解析兼容实现通过完整合成门禁并合入后，在任何新的真实有线 `status` 前停止并向维护者取得单请求批准。Wi-Fi `status`、`network scan`、login/logout、VM 与网络配置改变仍不在当前授权内。三个旧对象继续搁置，完成前 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 与 M0 保持 `in_progress`，且不创建新 release。

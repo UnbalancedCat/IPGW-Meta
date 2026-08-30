@@ -152,7 +152,8 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - docs-first 已固定 positional legacy CSV 的最小 online 身份不变量：去除外层空白后必须是单个无内嵌 CR/LF、至少 9 列的 CSV record，位置 0 为合法 username，位置 8 为全局单播 IPv4；其他列保持 opaque，不参与身份、online/offline 或冲突推断。
 - 位置 6/7/11 只形成 all-or-nothing 的可选 summary 候选。流量与时长必须同时为 `int64` 范围内的非负十进制整数，非空余额必须可精确转换为 minor units；否则只保留已经成立的 online 身份并令 summary 整体为 `nil`，不返回部分摘要。该降级仅适用于 legacy CSV；JSON/JSONP 显式命名 summary 的无效、部分或 alias 冲突继续返回 `protocol_changed`。
 - 实现只调整 `internal/srun` 的 legacy CSV 解析顺序并增加内部与公共 SDK 合成边界测试；公共 SDK/CLI/JSON/退出码、endpoint、transport、请求次数和脱敏边界均未改变。聚焦普通/race 测试与全量 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check` 全部通过。
-- 固定 gitleaks `v8.30.1` 的合成 canary、41 commits 全历史/全部 refs/reflog 与工作树扫描均为 0 finding。`git fsck --full` 无损坏或 dangling commit，仅报告既有 1 个 dangling blob 与 14 个 dangling tree。当前仅完成本地合成门禁，尚未合入 main，也未执行新的校园网请求；签名 PR 与 merge 后 CI 完成后，任何真实有线 `status` 仍须取得新的单请求批准。
+- 固定 gitleaks `v8.30.1` 的合成 canary、41 commits 全历史/全部 refs/reflog 与工作树扫描均为 0 finding。`git fsck --full` 无损坏或 dangling commit，仅报告既有 1 个 dangling blob 与 14 个 dangling tree。
+- signed implementation commit `dd7b563936a6c2472896fc4e2fd288e5d0cae536` 由 GitHub 验证为 `valid`；PR #19 head CI run `33323660497` 六项 required checks 与 Native run `33323660534` 七项全部成功，并以普通 merge 合入 main `2348f9a0bf208e56303222e03c0137618ff700fb`。merge 双亲依次为 `ea152221813020578c69bdfb604cc07ec00edcbe` 与 implementation commit，tree 为 `51abf026059e6a4e005952306ad046d785326764`，GitHub 签名为 `valid`；merge 后 CI run `33323891972` 六项与 Native run `33323892073` 七项再次全部成功。未执行新的校园网请求；任何真实有线 `status` 仍须取得新的单请求批准，M0、`SEC-HISTORY-001` 与 M3 继续保持 `in_progress`。
 
 ## 2026-08-27 本地验收结果
 
@@ -168,7 +169,7 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - 六平台原生 release-shaped asset 安装矩阵已使用同一精确临时 PR artifact 完成；该 artifact 只构成 M2 原生门禁证据，不是 M3 candidate-set、公开 release、tag 或发布资产。
 - 既有 `.github/workflows/release.yml` push runs `33259518906` 与 `33271252579` 的零-job 根因已复现并随 `WP-M3-CANDIDATE` 关闭；旧 workflow 已删除，candidate workflow 与 CI actionlint/workflowguard 门禁已合入。由于 M0 gate 仍阻断正式 dispatch，目前仍不存在可供真实验收或 promotion 使用的 M3 candidate artifact。
 - `WP-M3-CANDIDATE` 与 `WP-M3-PROMOTION` 已完成并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的一次构建、验证、attestation 与 no-build 原样晋升路径。由于 M0 gate 仍阻断正式 dispatch，目前尚未生成正式 candidate-set、attestation、promotion lock/evidence、tag、draft 或 release；临时 PR artifact 不得视为 candidate-set，M3 继续为 `in_progress`。当前 `LAB-DISCOVER` 状态与后续边界见上节；仍不创建 VM、不切线、不启动认证。
-- `LAB-DISCOVER` 尚未完成：ZOS 路径仍缺少 [`REL-LAB-002`](../runbooks/campus-lab.md#rel-lab-002发现与供应) 隔离能力证明；BHK fallback 的最小无凭据诊断已把单次有线 `protocol_changed` 缩小到现有 legacy CSV 解析兼容性，Wi-Fi 仍未执行，且没有形成正式 live evidence。docs-first 解析兼容实现与本地合成门禁已经完成但尚待签名 PR/merge；远端集成通过后，任何认证前仍须在新的单请求批准边界内复核一次有线 `status`。M3 继续保持 `in_progress`。
+- `LAB-DISCOVER` 尚未完成：ZOS 路径仍缺少 [`REL-LAB-002`](../runbooks/campus-lab.md#rel-lab-002发现与供应) 隔离能力证明；BHK fallback 的最小无凭据诊断已把单次有线 `protocol_changed` 缩小到 legacy CSV 解析兼容性，Wi-Fi 仍未执行，且没有形成正式 live evidence。docs-first 解析兼容实现已经通过签名 PR、普通 merge 与 merge 后 CI 合入 main；任何认证前仍须在新的单请求批准边界内复核一次有线 `status`。M3 继续保持 `in_progress`。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 
 ## 当前已知能力限制
