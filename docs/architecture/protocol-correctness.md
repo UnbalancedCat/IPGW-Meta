@@ -9,6 +9,9 @@ revision: 2026-08-28-r2
 
 - 每次认证动态解析 CAS form action、`lt`、`execution`、公开登录脚本和 RSA 公钥。
 - 状态解析必须明确区分 JSON、JSONP、HTML 和未知响应；先判断内容类型/结构，再做业务解析。
+- legacy CSV 仅在去除首尾空白后为单个无内嵌 CR/LF 的 CSV record、字段数至少为 9、位置 0 是合法 username 且位置 8 是全局单播 IPv4 时，才构成 online 身份证据；任一身份条件缺失或无效都返回 `protocol_changed`。其他位置不得覆盖或冲突推断 username/IP，也不得参与 online/offline 判定。
+- legacy CSV 的位置 6/7/11 只形成一个 all-or-nothing 的可选摘要候选：位置 6 和 7 必须同时是 `int64` 范围内的非负十进制整数，且位置 11 在存在且非空时必须可精确转换为余额 minor units，才返回完整 `OnlineSummary`；否则整个摘要为 unavailable（`nil`），不得返回部分摘要或因可选摘要不可用而否定已经成立的 online 身份。未解释的非身份列保持 opaque，不得猜测其语义。
+- 上述可选摘要降级只适用于 positional legacy CSV。JSON/JSONP 的显式命名字段一旦出现就承诺对应语义；无效、部分或 alias 冲突的显式 summary 仍返回 `protocol_changed`。
 - 协议缓存不包含秘密，按可靠的网络上下文隔离，最长 7 天；只有经过业务成功和最终身份验证的值可写入。绑定 IP 不是网络身份，不能单独作为 cache key 或“同一网络”的证据。
 - v1 尚无可靠 network fingerprint，因此禁用持久协议缓存的读取、写入与 fallback；每次操作都执行动态发现，发现失败时返回 `protocol_changed`。未来只有在能够可靠判定同一网络后，才可启用已验证缓存 fallback。
 - 猜测式恢复只能作为显式诊断，不能默认启用，也不能提升证据等级。

@@ -115,6 +115,9 @@ func offlineIdentityPresent(object wirejson.Object) (bool, error) {
 }
 
 func parseStatusCSV(value string) (Status, error) {
+	if strings.ContainsAny(value, "\r\n") {
+		return Status{}, ErrUnrecognized
+	}
 	reader := csv.NewReader(strings.NewReader(value))
 	reader.FieldsPerRecord = -1
 	records, err := reader.ReadAll()
@@ -130,28 +133,26 @@ func parseStatusCSV(value string) (Status, error) {
 	if err != nil {
 		return Status{}, ErrUnrecognized
 	}
-	traffic, err := parseNonNegativeIntegerText(strings.TrimSpace(record[6]))
-	if err != nil {
-		return Status{}, ErrUnrecognized
-	}
-	duration, err := parseNonNegativeIntegerText(strings.TrimSpace(record[7]))
-	if err != nil {
-		return Status{}, ErrUnrecognized
-	}
 
 	result := Status{
 		Online:   true,
 		Username: username,
 		OnlineIP: onlineIP,
-		Summary:  &Summary{TrafficBytes: traffic, DurationSeconds: duration},
 	}
+	traffic, trafficErr := parseNonNegativeIntegerText(strings.TrimSpace(record[6]))
+	duration, durationErr := parseNonNegativeIntegerText(strings.TrimSpace(record[7]))
+	if trafficErr != nil || durationErr != nil {
+		return result, nil
+	}
+	summary := &Summary{TrafficBytes: traffic, DurationSeconds: duration}
 	if len(record) > 11 && strings.TrimSpace(record[11]) != "" {
 		balance, balanceErr := parseBalanceText(strings.TrimSpace(record[11]))
 		if balanceErr != nil {
-			return Status{}, ErrUnrecognized
+			return result, nil
 		}
-		result.Summary.BalanceMinor = &balance
+		summary.BalanceMinor = &balance
 	}
+	result.Summary = summary
 	return result, nil
 }
 
