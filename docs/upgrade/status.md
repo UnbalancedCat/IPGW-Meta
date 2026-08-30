@@ -143,6 +143,10 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - signed implementation commit `8c1e24aa66824062580ec380d4bb2acce41ae991` 经 PR #16 的 CI run `33310700735` 六项 required checks 与 Native run `33310700716` 七项全部成功后，以普通 merge 合入 `ce57f4e2474055defba00195645db363729d3533`；merge 双亲、tree `cd9ee5cb7c41e0900917b37d2e2491eac5f92e8d` 与 GitHub 签名均已精确复验，merge 后 CI run `33310968357` 六项与 Native run `33310968406` 七项再次成功。
 - implementation tree 的 focused test、`go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...`、`go run ./cmd/doccheck --check` 全部通过；固定 gitleaks `8.30.1` 的合成 canary、39 commits 全历史/refs/reflog 与 209 文件工作树扫描为 0 finding。`git fsck --full` 无损坏或 dangling commit，仅报告 1 个 dangling blob 与 14 个 dangling tree。M0、`SEC-HISTORY-001` 与 M3 均继续保持 `in_progress`。
 
+- 维护者随后批准 exact-main 的单次有线、无凭据协议形状诊断。请求前再次核对远端 main、已知 rulesets 与 refs、source/tree/signature、helper hash、受保护空配置、system proxy、物理网卡、TUN/覆盖路由为零、非 fake-IP DNS、constrained-source 有线出口和 RealVNC；全部通过后仅执行 1 个新网关 round trip。BHK 匿名阶段累计真实请求数为 2，Wi-Fi 仍未执行。
+- 封闭结果为 `http_class=http_2xx`、非重定向、`body_size_bucket=1_1024`、`leading_shape=other`、全部状态/身份/流量字段与 marker presence 为 false、`legacy_csv_shape=true`，产品分类为 `protocol_gateway_status` / `gateway_status`，包装器确认 `gateway_requests=1`。该结果只证明 HTTPS 返回了现有解析器未接受的单行多列 legacy CSV-like 形状，不证明字段含义、会话、认证或正式 evidence；未采集、保存或输出正文、响应头、URL、账号、IP 或原始 stdout/stderr。请求后 postflight 通过，本地 helper、WSL staging 与 Windows 受保护 helper 目录均已精确清理；旧 exact-main 产品 binary 与受保护空配置未改动。
+- 本次 docs-only closeout tree 的 `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 全部通过；固定 gitleaks `v8.30.1` 的合成 canary、40 commits 全历史/全部 refs/reflog 与工作树扫描均为 0 finding。`git fsck --full` 无损坏或 dangling commit，仅报告 1 个 dangling blob 与 14 个 dangling tree。
+
 ## 2026-08-27 本地验收结果
 
 - `go test -count=1 ./...`、`go test -race -count=1 ./...`、`go vet ./...` 与 `go run ./cmd/doccheck --check` 均通过。
@@ -156,8 +160,8 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - 仓库治理、只读 baseline、所有 M2 工作包、`WP-M3-LIVEGATE-SCHEMA`、`WP-M3-LIVEGATE-RUNNER`、`WP-M3-CANDIDATE` 与 `WP-M3-PROMOTION` 均已完成；下一工作包为 `LAB-DISCOVER`。三个旧对象完成 GitHub Support 清理前，`SEC-HISTORY-001` 与 M0 继续保持 `in_progress`，且 M0 完成前仍禁止新 release。
 - 六平台原生 release-shaped asset 安装矩阵已使用同一精确临时 PR artifact 完成；该 artifact 只构成 M2 原生门禁证据，不是 M3 candidate-set、公开 release、tag 或发布资产。
 - 既有 `.github/workflows/release.yml` push runs `33259518906` 与 `33271252579` 的零-job 根因已复现并随 `WP-M3-CANDIDATE` 关闭；旧 workflow 已删除，candidate workflow 与 CI actionlint/workflowguard 门禁已合入。由于 M0 gate 仍阻断正式 dispatch，目前仍不存在可供真实验收或 promotion 使用的 M3 candidate artifact。
-- `WP-M3-CANDIDATE` 与 `WP-M3-PROMOTION` 已完成并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的一次构建、验证、attestation 与 no-build 原样晋升路径。由于 M0 gate 仍阻断正式 dispatch，目前尚未生成正式 candidate-set、attestation、promotion lock/evidence、tag、draft 或 release；临时 PR artifact 不得视为 candidate-set，M3 继续为 `in_progress`。下一步 `LAB-DISCOVER` 只做 ZOS 只读能力检查，不创建 VM、不切线、不启动认证。
-- `LAB-DISCOVER` 尚未完成：ZOS 路径仍缺少 [`REL-LAB-002`](../runbooks/campus-lab.md#rel-lab-002发现与供应) 隔离能力证明；BHK fallback 的单次有线匿名 `status` 为 `protocol_changed`，Wi-Fi 未执行，且没有形成正式 live evidence。进入任何认证前必须先在独立批准边界内完成最小化、无凭据且不保留原始响应的协议诊断；M3 继续保持 `in_progress`。
+- `WP-M3-CANDIDATE` 与 `WP-M3-PROMOTION` 已完成并冻结符合 [ADR-0007](../architecture/decisions/ADR-0007-immutable-candidate-promotion.md) 的一次构建、验证、attestation 与 no-build 原样晋升路径。由于 M0 gate 仍阻断正式 dispatch，目前尚未生成正式 candidate-set、attestation、promotion lock/evidence、tag、draft 或 release；临时 PR artifact 不得视为 candidate-set，M3 继续为 `in_progress`。当前 `LAB-DISCOVER` 状态与后续边界见上节；仍不创建 VM、不切线、不启动认证。
+- `LAB-DISCOVER` 尚未完成：ZOS 路径仍缺少 [`REL-LAB-002`](../runbooks/campus-lab.md#rel-lab-002发现与供应) 隔离能力证明；BHK fallback 的最小无凭据诊断已把单次有线 `protocol_changed` 缩小到现有 legacy CSV 解析兼容性，Wi-Fi 仍未执行，且没有形成正式 live evidence。进入任何认证前必须先在独立边界内完成 docs-first 解析兼容修复及合成门禁，再在新的单请求批准边界内复核一次有线 `status`；M3 继续保持 `in_progress`。
 - `REL-LIVE-MATRIX-001` 未执行：校园有线/无线的 password 场景和至少一种网络的 Terminal QR 扫码闭环都需要在 [ADR-0009](../architecture/decisions/ADR-0009-separated-live-test-plane.md) 的隔离边界内完成，并按证据规范脱敏落盘。
 
 ## 当前已知能力限制
