@@ -396,15 +396,15 @@ QR 只要求 NAS 完成一次。异账号 conflict/switch 只做合成测试，�
 
 ### 5.4 Promotion lock
 
-`docs/evidence/releases/v1.0.0/promotion-lock.json` 至少记录 schema/version、candidate ID、source commit/tree、workflow run ID/attempt、artifact ID/digest、candidate-set/release-manifest/build-input SHA-256、attestation subjects 和 evidence IDs；`release-notes.md` 与其同目录。
+`docs/evidence/releases/v1.0.0/promotion-lock.json` 的 closed-world 字段、canonical bytes、workflow/artifact、11 个 attestation subjects、四份 public evidence summary 与 `release-notes.md` 哈希契约以 [`REL-PROMOTION-001`](../operations/release.md#rel-promotion-001promotion-lock-与原样发布) 为唯一规范；不得使用“至少包含”的开放 schema。
 
-candidate source 与最终 tag 之间只允许修改 `docs/evidence/releases/v1.0.0/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`。任何 Go、module、installer、workflow、Makefile、release script、doccheck 构建输入或其他文件变化都会废弃候选。
+candidate source 与最终 tag 之间只允许修改 `docs/evidence/releases/v1.0.0/**`、`docs/upgrade/status.md`、`docs/compatibility/auth-capabilities.md`。任何 Go、module、installer、workflow、Makefile、release script、doccheck 构建输入或其他文件变化都会废弃候选；promotion commit 必须重算并匹配 build-input digest。
 
 ### 5.5 SSH 签名与最终发布
 
 使用专用 Ed25519 release signing key。私钥只存于本地 Windows 用户环境，不进入仓库、CI、NAS、BHK 或 Agent 输出；公钥登记为 GitHub signing key。clean repo 使用 `gpg.format=ssh`。最终 `v1.0.0` 由维护者在 clean repo 手动创建指向 promotion commit 的 SSH 签名 annotated tag。
 
-Promotion workflow 必须：验证 annotated tag、版本、目标和 GitHub API 签名状态；验证 lock/source/diff 白名单；按精确 artifact ID 下载 candidate-set；验证 artifact digest、集合 hash、manifest、全部资产及 attestation；禁止 setup-go/build/package/repack；创建不可见 draft；无 clobber 上传六个 bundle、两个 installer、release manifest 和 SHA256SUMS；重新下载核对名称、大小、SHA-256；全部一致后才公开。失败时保留不可见 draft，不得公开半包或替换单资产。
+Promotion workflow 必须按 [`REL-PROMOTION-001`](../operations/release.md#rel-promotion-001promotion-lock-与原样发布) 验证 annotated tag/main tip、lock/source/build-input、精确 artifact、full Candidate 与 attestation；全程禁止 setup-go/build/package/repack。远端同 tag release 必须不存在；workflow 只创建无 clobber 的不可见 draft，上传十个原始公开资产并重新下载逐项核对，最后一次复核通过后才公开。失败时保留不可见 draft，不得自动删除、重试 mutation、公开半包或替换单资产。
 
 Release notes 必须声明：新安装默认 meta、旧安装保持 legacy；配置迁移方式；password/QR 真实证据范围；conflict 只有合成覆盖；OTP detected-only；自更新禁用；macOS 只有安装/CLI 验证，没有校园认证声明。
 

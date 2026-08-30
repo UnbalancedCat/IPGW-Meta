@@ -16,7 +16,7 @@ PLATFORMS := \
 	windows-amd64 \
 	windows-arm64
 
-.PHONY: all build clean test race vet doccheck ci package candidate-build candidate-gate release release-gate $(PLATFORMS)
+.PHONY: all build clean test race vet doccheck promotion-test ci package candidate-build candidate-gate promotion-gate release release-gate $(PLATFORMS)
 
 define load_build_version
 version_file="$${RELEASE_VERSION_FILE:-}"; \
@@ -79,7 +79,10 @@ vet:
 doccheck:
 	go run ./cmd/doccheck --check
 
-ci: doccheck test vet race all
+promotion-test:
+	python3 -W error::ResourceWarning scripts/test-promotion.py
+
+ci: doccheck promotion-test test vet race all
 
 package: all
 	@set -eu; \
@@ -105,6 +108,29 @@ candidate-gate:
 			exit 1; \
 		fi; \
 	done
+
+promotion-gate:
+	@set -eu; \
+	status_file=docs/upgrade/status.md; \
+	if [ ! -f "$$status_file" ] || [ -L "$$status_file" ]; then \
+		echo "promotion blocked: docs/upgrade/status.md must be a regular file" >&2; \
+		exit 1; \
+	fi; \
+	for milestone in M0 M1 M2; do \
+		rows=$$(grep -Ec "^\\| $$milestone [^|]*\\| [^|]+ \\|" "$$status_file" || :); \
+		complete=$$(grep -Ec "^\\| $$milestone [^|]*\\| complete \\|" "$$status_file" || :); \
+		if [ "$$rows" -ne 1 ] || [ "$$complete" -ne 1 ]; then \
+			echo "promotion blocked: $$milestone must appear exactly once and be complete in docs/upgrade/status.md" >&2; \
+			exit 1; \
+		fi; \
+	done; \
+	rows=$$(grep -Ec "^\\| M3 [^|]*\\| [^|]+ \\|" "$$status_file" || :); \
+	in_progress=$$(grep -Ec "^\\| M3 [^|]*\\| in_progress \\|" "$$status_file" || :); \
+	if [ "$$rows" -ne 1 ] || [ "$$in_progress" -ne 1 ]; then \
+		echo "promotion blocked: M3 must appear exactly once and remain in_progress until publication is verified" >&2; \
+		exit 1; \
+	fi
+
 
 candidate-build:
 	@set -eu; \

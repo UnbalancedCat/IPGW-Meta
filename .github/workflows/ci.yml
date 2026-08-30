@@ -36,6 +36,8 @@ jobs:
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Validate GitHub Actions workflows
         run: '"$(go env GOPATH)/bin/actionlint"'
+      - name: Test no-build promotion verifier
+        run: python3 -W error::ResourceWarning scripts/test-promotion.py
       - name: Check documentation contracts
         run: go run ./cmd/doccheck --check
       - name: Vet
