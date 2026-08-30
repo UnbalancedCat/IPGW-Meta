@@ -260,6 +260,36 @@ func TestWireMessagesAreFixedAndInteractionIsAllowlisted(t *testing.T) {
 	}
 }
 
+func TestProtocolPartIsAllowlisted(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		value  string
+		want   string
+		exists bool
+	}{
+		{name: "gateway status", value: "gateway_status", want: "gateway_status", exists: true},
+		{name: "unknown", value: wireCanary, exists: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := &ipgw.Error{
+				Code:    ipgw.CodeProtocolChanged,
+				Details: ipgw.ErrorDetails{ProtocolPart: test.value},
+			}
+			(renderer{mode: outputJSON, out: &stdout, err: io.Discard}).failure("status", err)
+			if strings.Contains(stdout.String(), wireCanary) {
+				t.Fatal("unknown protocol part leaked")
+			}
+			wiredError := objectField(t, decodeSingleEnvelope(t, stdout.Bytes()), "error")
+			details := objectField(t, wiredError, "details")
+			got, exists := details["protocol_part"]
+			if exists != test.exists || (test.exists && got != test.want) {
+				t.Fatalf("protocol_part = %#v, exists=%v; want %q, exists=%v", got, exists, test.want, test.exists)
+			}
+		})
+	}
+}
+
 func TestJSONEncodeFailureReturnsInternalExitWithoutRetry(t *testing.T) {
 	for _, test := range []struct {
 		name string
