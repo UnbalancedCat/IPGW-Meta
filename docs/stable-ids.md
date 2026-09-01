@@ -20,6 +20,7 @@ generated: true
 | `ADR-0008` | 离线安装与事务激活共用验证链 | [docs/architecture/decisions/ADR-0008-offline-transactional-installer.md](architecture/decisions/ADR-0008-offline-transactional-installer.md#adr-0008离线安装与事务激活共用验证链) |
 | `ADR-0009` | 真实认证采用分离的管理面与测试面 | [docs/architecture/decisions/ADR-0009-separated-live-test-plane.md](architecture/decisions/ADR-0009-separated-live-test-plane.md#adr-0009真实认证采用分离的管理面与测试面) |
 | `ADR-0010` | macOS 固定系统别名作为受信任路径锚点 | [docs/architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md](architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md#adr-0010macos-固定系统别名作为受信任路径锚点) |
+| `ADR-0011` | M0 残余治理不阻塞发布流水线 | [docs/architecture/decisions/ADR-0011-nonblocking-m0-governance.md](architecture/decisions/ADR-0011-nonblocking-m0-governance.md#adr-0011m0-残余治理不阻塞发布流水线) |
 | `ARCH-BOUNDARY-001` | 产品边界 | [docs/architecture/overview.md](architecture/overview.md#arch-boundary-001产品边界) |
 | `ARCH-CONCURRENCY-001` | 生命周期 | [docs/architecture/overview.md](architecture/overview.md#arch-concurrency-001生命周期) |
 | `ARCH-MODE-001` | 模式选择 | [docs/architecture/overview.md](architecture/overview.md#arch-mode-001模式选择) |
@@ -93,7 +94,7 @@ generated: true
 | `REL-LIVEGATE-001` | Runner 接口与信任边界 | [docs/operations/live-validation.md](operations/live-validation.md#rel-livegate-001runner-接口与信任边界) |
 | `REL-LIVEGATE-002` | Suite 状态机与清理权 | [docs/operations/live-validation.md](operations/live-validation.md#rel-livegate-002suite-状态机与清理权) |
 | `REL-LIVEGATE-003` | 候选绑定与结果输出 | [docs/operations/live-validation.md](operations/live-validation.md#rel-livegate-003候选绑定与结果输出) |
-| `REL-M0-001` | 紧急安全门禁 | [docs/operations/release.md](operations/release.md#rel-m0-001紧急安全门禁) |
+| `REL-M0-001` | 紧急安全治理 | [docs/operations/release.md](operations/release.md#rel-m0-001紧急安全治理) |
 | `REL-PROMOTION-001` | Promotion lock 与原样发布 | [docs/operations/release.md](operations/release.md#rel-promotion-001promotion-lock-与原样发布) |
 | `REL-TRANSFER-001` | 候选下载与远端传输 | [docs/operations/live-validation.md](operations/live-validation.md#rel-transfer-001候选下载与远端传输) |
 | `REL-UPDATE-001` | 未来恢复自更新的前置条件 | [docs/operations/release.md](operations/release.md#rel-update-001未来恢复自更新的前置条件) |
