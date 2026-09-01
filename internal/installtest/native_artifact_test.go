@@ -76,13 +76,20 @@ func nativeInstallArtifactRequired() bool {
 	return strings.TrimSpace(os.Getenv(nativeArtifactRequiredEnv)) == "1"
 }
 
+func normalizeNativeArtifactRoot(root string) (string, bool) {
+	if root == "" || !filepath.IsAbs(root) {
+		return "", false
+	}
+	return filepath.Clean(root), true
+}
+
 func prepareNativeInstallAsset(t *testing.T, privateRoot string) nativeInstallAsset {
 	t.Helper()
-	artifactRoot := requireNativeArtifactEnv(t, nativeArtifactRootEnv)
+	artifactRoot, ok := normalizeNativeArtifactRoot(requireNativeArtifactEnv(t, nativeArtifactRootEnv))
 	version := requireNativeArtifactEnv(t, nativeArtifactVersionEnv)
 	sourceCommit := requireNativeArtifactEnv(t, nativeArtifactCommitEnv)
 	sourceTree := requireNativeArtifactEnv(t, nativeArtifactTreeEnv)
-	if !filepath.IsAbs(artifactRoot) {
+	if !ok {
 		t.Fatalf("%s must be absolute", nativeArtifactRootEnv)
 	}
 	assertPlainDirectory(t, artifactRoot, "native install artifact root")
@@ -205,6 +212,42 @@ func prepareNativeInstallAsset(t *testing.T, privateRoot string) nativeInstallAs
 		bundleSHA256:  checksums[bundleName],
 		installerPath: installerDestination,
 		version:       version,
+	}
+}
+
+func TestNormalizeNativeArtifactRoot(t *testing.T) {
+	absolute := filepath.Join(t.TempDir(), "candidate-set")
+	tests := []struct {
+		name  string
+		input string
+		ok    bool
+	}{
+		{name: "empty"},
+		{name: "relative", input: filepath.Join("relative", "candidate-set")},
+		{name: "clean absolute", input: absolute, ok: true},
+		{name: "absolute dot", input: absolute + string(filepath.Separator) + ".", ok: true},
+	}
+	if runtime.GOOS == "windows" {
+		tests = append(tests, struct {
+			name  string
+			input string
+			ok    bool
+		}{
+			name:  "windows mixed separators",
+			input: filepath.Dir(absolute) + "/" + filepath.Base(absolute),
+			ok:    true,
+		})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := normalizeNativeArtifactRoot(test.input)
+			if ok != test.ok {
+				t.Fatalf("normalizeNativeArtifactRoot() ok = %v, want %v", ok, test.ok)
+			}
+			if ok && got != filepath.Clean(test.input) {
+				t.Fatalf("normalizeNativeArtifactRoot() = %q, want %q", got, filepath.Clean(test.input))
+			}
+		})
 	}
 }
 
