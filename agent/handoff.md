@@ -14,7 +14,7 @@ snapshot_at: 2026-09-01
 - 执行者：Codex。
 - 工作包：`RC-BUILD`。M0 非阻塞门禁已通过 PR #21 以普通 merge 合入受保护 main `3786382bfe0b91c428d45166d4dbb046b57c720e`；merge 双亲、tree、GitHub 签名及合入后 CI 六项/Native 七项均已复验。维护者已授权从精确 main 单次生成正式 `v1.0.0` Candidate。
 - 修改边界：允许只读冻结 main/rulesets/tag/release/checks，dispatch Candidate workflow，验证 artifact/manifest/hash/attestation，并在任何 build/upload 前的自动化缺陷上做最小 workflow/test/docs 修复、签名 PR 与普通 merge。不得 bypass/admin/force，不得创建 tag、draft 或 release，也不得启动校园网、认证、login/logout、网络修改或 VM。
-- 停止条件：source/main/tree/signature/ruleset/check/tag 发生漂移，Candidate preflight 之外出现部分上传，artifact/attestation 身份无法精确证明，或任何 secret/leak/CI 门禁失败时立即停止。run `33464985630` 已因 check-run jq 表达式编译错误在 preflight 封闭失败；build/upload/attestation 全部 skipped，修复合入前不得重跑。
+- 停止条件：source/main/tree/signature/ruleset/check/tag 发生漂移，artifact/attestation 身份无法精确证明，或任何 secret/leak/CI 门禁失败时立即停止。run `33464985630` 因 check-run jq 编译错误在 preflight 封闭失败且无制品；修复合入后 run `33466493360` 成功创建 artifact `9785072853`，但两个 Windows native-install job 因混合路径分隔符在安装前 verifier 阶段失败，attestation skipped。该 artifact 不得转运或晋升；绝对路径规范化修复合入前不得再次 dispatch。
 
 ## 已完成
 
