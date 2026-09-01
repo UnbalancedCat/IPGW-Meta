@@ -185,6 +185,8 @@ M1 的本地实现与自动化门禁已完成。M2 配置迁移、三入口、�
 - 共用 `scripts/milestone-gate.sh` 已成为 Makefile 三个状态 gate 的唯一判定入口；53 个合成用例证明 M0 的 `not_started|in_progress|blocked|complete` 与缺失均不改变结果，同时覆盖 M1/M2/M3 缺失、重复和错误状态的封闭拒绝。当前正式 status 下 Candidate 与 Promotion gate 通过，release 因 M3 仍为 `in_progress` 按预期拒绝。
 - 本地聚焦与全量普通/race 测试、vet、doccheck、actionlint、7 项 promotion verifier、六目标交叉构建、Bash AST、固定 gitleaks 合成 canary/43 commits 全历史/16 个改动文件扫描和 `git fsck --full` 均通过；fsck 无损坏或 dangling commit，仅报告既有 1 个 dangling blob 与 25 个 dangling tree。
 - 本工作包只实现规范、状态 gate 与合成回归测试，并提交签名 PR 等待 required CI；不自动 merge。合入后下一工作包为 `RC-BUILD` 的独立授权窗口；ZOS `blocked`、BHK 既有会话 `online` 和正式 live matrix 的其他约束不因 M0 解耦而改变。
+- PR #21 head 的 CI 六项与 Native 七项全部成功，并以普通 merge 合入 main `3786382bfe0b91c428d45166d4dbb046b57c720e`；merge 双亲、tree `f0a7cf1fff2a66d91e2939e3611502d1ae4923fe` 与 GitHub 签名均已精确复验，合入后 CI run `33463522316` 六项和 Native run `33463522437` 七项再次全部成功。维护者随后授权进入 `RC-BUILD`。
+- 第一次 Candidate dispatch run `33464985630` 在任何 build/upload/attestation 前由 preflight 封闭失败：check-run hard gate 的 jq 使用了不可编译的 `all(.[] as $name; ...)` 形式；source identity、immutable inputs 与 checkout 已通过，后续所有 jobs 均 skipped，未创建 artifact、attestation、tag、draft 或 release。修复把 filter 拆为可直接执行合成测试的 `scripts/candidate-checks.jq`，保留精确 13 项 checks、最新同名 run、GitHub Actions app/source SHA 和 100 项分页上限约束；修复合入并通过新 main checks 前不得再次 dispatch。
 
 ## 2026-08-27 本地验收结果
 
