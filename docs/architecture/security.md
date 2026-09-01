@@ -25,6 +25,8 @@ Unix 私密文件路径拒绝用户可控的父目录 symlink 和最终文件 sy
 
 仓库重写属于单独的高风险运维动作，不得由普通代码补丁隐式执行。
 
+M0 与本节的未完成外部事项必须继续如实跟踪，但不再作为 Candidate、Promotion、release 或真实验收的状态门禁；精确风险接受和仍保留的独立 hard gate 见 [`ADR-0011`](decisions/ADR-0011-nonblocking-m0-governance.md)。新的可达秘密、有效凭据、secret scan finding 或泄漏测试失败仍必须立即 fail closed，本例外只适用于已经失去 ref 可达性的既知旧对象及其外部缓存处置。
+
 2026-08-27 的隔离镜像演练、tag 映射及 `refs/codex` tree-ref 陷阱记录在 [`EVID-HISTORY-DRYRUN-001`](../evidence/2026-08-27-history-rewrite-dry-run.md#evid-history-dryrun-001历史重写隔离演练)；该记录不代表真实 refs 或远端已清理。
 
 ## SEC-TRANSPORT-001：秘密不经 HTTP

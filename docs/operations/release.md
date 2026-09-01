@@ -5,7 +5,7 @@ revision: 2026-08-28-r2
 
 # 发布操作手册
 
-v1 按门禁而不是日期发布。M0 未完成时禁止创建或发布新版本。
+v1 按门禁而不是日期发布。M0 残余历史治理继续跟踪但不参与 Candidate、Promotion 或 release 的状态判定；风险接受与仍保留的独立 hard gate 见 [`ADR-0011`](../architecture/decisions/ADR-0011-nonblocking-m0-governance.md)。
 
 ## REL-WINDOW-001：短执行窗口
 
@@ -26,7 +26,7 @@ v1 按门禁而不是日期发布。M0 未完成时禁止创建或发布新版�
 
 执行前必须解析精确目标并完成只读核验；执行后必须验证最终状态。审批只授权列明的动作和目标，不扩大为任意 GitHub、网络或文件系统操作。
 
-## REL-M0-001：紧急安全门禁
+## REL-M0-001：紧急安全治理
 
 发布负责人必须确认：
 
@@ -38,6 +38,8 @@ v1 按门禁而不是日期发布。M0 未完成时禁止创建或发布新版�
 - 未签名自更新及其发布入口已禁用。
 
 Git 历史重写必须独立执行、创建受控备份、解析精确 refs 并经维护者批准；普通 release job 不自动重写历史。
+
+本节是持续治理记录，不是发布状态 gate。M0 与 `SEC-HISTORY-001` 可以保持 `in_progress`；Candidate、Promotion 和 release 分别只读取下文规定的 M1/M2/M3 状态。该解耦不得替代 required CI、secret scan、泄漏测试、签名、refs/ruleset、Candidate/attestation、真实 evidence 或 promotion 完整性检查。
 
 ## REL-CI-001：自动化门禁
 
@@ -77,7 +79,7 @@ doccheck --check
 
 ## REL-CANDIDATE-001：候选与发布顺序
 
-1. workflow 输入 `release_version: v1.0.0` 和完整 40 位 `source_commit`；SHA 必须等于受保护 `main` 当前 tip，M0–M2 门禁通过且最终 tag 不存在。
+1. workflow 输入 `release_version: v1.0.0` 和完整 40 位 `source_commit`；SHA 必须等于受保护 `main` 当前 tip，M1–M2 门禁通过且最终 tag 不存在。M0 状态不参与 Candidate 判定。
 2. 六个平台、三入口与两个私有 live-gate helper 各构建一次，生成确定性 candidate-set；不为测试、tag 或发布重新编译、重压缩。
 3. 完成 artifact/attestation、六平台原生安装和同一 candidate-set 的真实网络矩阵。
 4. 人工复核 evidence，更新能力矩阵和正式状态，提交 promotion lock 与 release notes。

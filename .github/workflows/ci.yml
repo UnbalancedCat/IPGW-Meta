@@ -38,6 +38,8 @@ jobs:
         run: '"$(go env GOPATH)/bin/actionlint"'
       - name: Test no-build promotion verifier
         run: python3 -W error::ResourceWarning scripts/test-promotion.py
+      - name: Test milestone status gates
+        run: bash scripts/test-milestone-gate.sh
       - name: Check documentation contracts
         run: go run ./cmd/doccheck --check
       - name: Vet

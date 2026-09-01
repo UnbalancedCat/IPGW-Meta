@@ -17,5 +17,6 @@ revision: 2026-08-28-r2
 | [ADR-0008](ADR-0008-offline-transactional-installer.md) | accepted | 离线 acquisition 与事务安装共用验证链 |
 | [ADR-0009](ADR-0009-separated-live-test-plane.md) | accepted | 真实认证分离管理面、测试面与私有交互面 |
 | [ADR-0010](ADR-0010-macos-trusted-system-path-alias.md) | accepted | macOS 固定 `/var` 系统别名作为受验证路径锚点 |
+| [ADR-0011](ADR-0011-nonblocking-m0-governance.md) | accepted | M0 残余治理继续跟踪但不阻塞发布流水线 |
 
 新增或改变公共行为时新建 ADR，不改写已接受 ADR 的历史结论；被替代的记录标为 `superseded` 并链接后继记录。

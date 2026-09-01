@@ -35,6 +35,7 @@ var requiredPaths = []string{
 	"docs/architecture/decisions/ADR-0007-immutable-candidate-promotion.md",
 	"docs/architecture/decisions/ADR-0008-offline-transactional-installer.md",
 	"docs/architecture/decisions/ADR-0009-separated-live-test-plane.md",
+	"docs/architecture/decisions/ADR-0011-nonblocking-m0-governance.md",
 	"docs/compatibility/auth-capabilities.md",
 	"docs/runbooks/headless-auth.md",
 	"docs/runbooks/campus-lab.md",

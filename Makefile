@@ -1,4 +1,5 @@
 SHELL := sh
+BASH ?= bash
 
 # Historical callers passed VERSION on the make command line. Never export or
 # expand it: release versions are read only from RELEASE_VERSION_FILE by shell.
@@ -16,7 +17,7 @@ PLATFORMS := \
 	windows-amd64 \
 	windows-arm64
 
-.PHONY: all build clean test race vet doccheck promotion-test ci package candidate-build candidate-gate promotion-gate release release-gate $(PLATFORMS)
+.PHONY: all build clean test race vet doccheck promotion-test milestone-gate-test ci package candidate-build candidate-gate promotion-gate release release-gate $(PLATFORMS)
 
 define load_build_version
 version_file="$${RELEASE_VERSION_FILE:-}"; \
@@ -82,7 +83,10 @@ doccheck:
 promotion-test:
 	python3 -W error::ResourceWarning scripts/test-promotion.py
 
-ci: doccheck promotion-test test vet race all
+milestone-gate-test:
+	$(BASH) scripts/test-milestone-gate.sh
+
+ci: doccheck promotion-test milestone-gate-test test vet race all
 
 package: all
 	@set -eu; \
@@ -94,42 +98,10 @@ package: all
 	bash scripts/release.sh "$(BUILD_DIR)" "$(RELEASE_DIR)" "$$version_file"
 
 candidate-gate:
-	@set -eu; \
-	status_file=docs/upgrade/status.md; \
-	if [ ! -f "$$status_file" ] || [ -L "$$status_file" ]; then \
-		echo "candidate blocked: docs/upgrade/status.md must be a regular file" >&2; \
-		exit 1; \
-	fi; \
-	for milestone in M0 M1 M2; do \
-		rows=$$(grep -Ec "^\\| $$milestone [^|]*\\| [^|]+ \\|" "$$status_file" || :); \
-		complete=$$(grep -Ec "^\\| $$milestone [^|]*\\| complete \\|" "$$status_file" || :); \
-		if [ "$$rows" -ne 1 ] || [ "$$complete" -ne 1 ]; then \
-			echo "candidate blocked: $$milestone must appear exactly once and be complete in docs/upgrade/status.md" >&2; \
-			exit 1; \
-		fi; \
-	done
+	@$(BASH) scripts/milestone-gate.sh candidate docs/upgrade/status.md
 
 promotion-gate:
-	@set -eu; \
-	status_file=docs/upgrade/status.md; \
-	if [ ! -f "$$status_file" ] || [ -L "$$status_file" ]; then \
-		echo "promotion blocked: docs/upgrade/status.md must be a regular file" >&2; \
-		exit 1; \
-	fi; \
-	for milestone in M0 M1 M2; do \
-		rows=$$(grep -Ec "^\\| $$milestone [^|]*\\| [^|]+ \\|" "$$status_file" || :); \
-		complete=$$(grep -Ec "^\\| $$milestone [^|]*\\| complete \\|" "$$status_file" || :); \
-		if [ "$$rows" -ne 1 ] || [ "$$complete" -ne 1 ]; then \
-			echo "promotion blocked: $$milestone must appear exactly once and be complete in docs/upgrade/status.md" >&2; \
-			exit 1; \
-		fi; \
-	done; \
-	rows=$$(grep -Ec "^\\| M3 [^|]*\\| [^|]+ \\|" "$$status_file" || :); \
-	in_progress=$$(grep -Ec "^\\| M3 [^|]*\\| in_progress \\|" "$$status_file" || :); \
-	if [ "$$rows" -ne 1 ] || [ "$$in_progress" -ne 1 ]; then \
-		echo "promotion blocked: M3 must appear exactly once and remain in_progress until publication is verified" >&2; \
-		exit 1; \
-	fi
+	@$(BASH) scripts/milestone-gate.sh promotion docs/upgrade/status.md
 
 
 candidate-build:
@@ -240,13 +212,7 @@ candidate-build:
 	trap - EXIT HUP INT TERM
 
 release-gate:
-	@set -eu; \
-	for milestone in M0 M1 M2 M3; do \
-		if ! grep -E "^\\| $$milestone .*\\| complete \\|" docs/upgrade/status.md >/dev/null; then \
-			echo "release blocked: $$milestone is not complete in docs/upgrade/status.md" >&2; \
-			exit 1; \
-		fi; \
-	done
+	@$(BASH) scripts/milestone-gate.sh release docs/upgrade/status.md
 
 release: release-gate package
 

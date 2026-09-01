@@ -18,6 +18,7 @@ func TestR2GovernanceInputs(t *testing.T) {
 		"docs/architecture/decisions/ADR-0007-immutable-candidate-promotion.md":   false,
 		"docs/architecture/decisions/ADR-0008-offline-transactional-installer.md": false,
 		"docs/architecture/decisions/ADR-0009-separated-live-test-plane.md":       false,
+		"docs/architecture/decisions/ADR-0011-nonblocking-m0-governance.md":       false,
 		"docs/operations/offline-install.md":                                      false,
 		"docs/operations/live-validation.md":                                      false,
 		"docs/runbooks/campus-lab.md":                                             false,

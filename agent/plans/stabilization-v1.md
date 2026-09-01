@@ -30,8 +30,9 @@ derived: true
 | WP-M3-LIVEGATE-RUNNER | WP-M3-LIVEGATE-SCHEMA | maintainer-only runner | [`REL-LIVEGATE-002`](../../docs/operations/live-validation.md) | 合成状态机、清理权、durability 测试 |
 | WP-M3-CANDIDATE | WP-M3-LIVEGATE-RUNNER | candidate workflow/manifest/packaging | [`REL-ATTEST-001`](../../docs/operations/release.md) | 一次构建、digest、attestation 测试 |
 | WP-M3-PROMOTION | WP-M3-CANDIDATE | promotion workflow/lock 校验 | [`REL-PROMOTION-001`](../../docs/operations/release.md) | no-build、签名、draft/re-download 测试 |
+| WP-M0-NONBLOCKING-GATES | WP-M3-PROMOTION, LAB-DISCOVER | 决策/发布/安全/状态、Makefile gate 与合成测试 | [`ADR-0011`](../../docs/architecture/decisions/ADR-0011-nonblocking-m0-governance.md) | M0 状态无关性；M1/M2/M3 缺失/重复/错误状态 fail closed |
 | LAB-PROVISION | LAB-DISCOVER, WP-M3-PROMOTION | 管理/测试 VM 与匿名预检 | [`REL-LAB-001`](../../docs/runbooks/campus-lab.md) | topology/status 预检；无凭据 |
-| RC-BUILD | LAB-PROVISION | 受保护 main 的 candidate-set | [`REL-CANDIDATE-001`](../../docs/operations/release.md) | artifact ID/digest/hash/attestation |
+| RC-BUILD | WP-M0-NONBLOCKING-GATES, LAB-DISCOVER | 受保护 main 的 candidate-set | [`REL-CANDIDATE-001`](../../docs/operations/release.md) | artifact ID/digest/hash/attestation |
 | LAB-TRANSFER | RC-BUILD | 本地下载与远端私有目录 | [`REL-TRANSFER-001`](../../docs/operations/live-validation.md) | 本地/远端一致 hash；远端无重建 |
 | LAB-PASSWORD-NAS/BHK | LAB-TRANSFER | NAS/BHK 私有 TTY 和私有 evidence | [`REL-LIVE-MATRIX-001`](../../docs/operations/live-validation.md) | 指定 password suites |
 | LAB-QR-NAS | LAB-PASSWORD-NAS/BHK | NAS 私有 TTY 和私有 evidence | [`AUTH-QR-002`](../../docs/compatibility/auth-capabilities.md) | terminal-qr suite |

@@ -230,14 +230,15 @@ AGENTS.md
 | 18 | `WP-M3-LIVEGATE-RUNNER` | 实现 maintainer-only runner 和无泄漏测试 |
 | 19 | `WP-M3-CANDIDATE` | 实现一次构建、candidate-set、manifest、artifact digest 和 attestation |
 | 20 | `WP-M3-PROMOTION` | 实现 promotion lock、签名 tag 验证、draft release 和禁止重建 |
-| 21 | `LAB-PROVISION` | 建立管理 VM/测试 VM；只做匿名 topology/status 预检 |
-| 22 | `RC-BUILD` | 从受保护 main 的精确 SHA 生成不可变 v1.0.0 candidate |
-| 23 | `LAB-TRANSFER` | 本地下载、验 attestation/hash，经 SCP 发送；远端不重建 |
-| 24 | `LAB-PASSWORD-NAS/BHK` | 每个网络/平台独立窗口执行 password suite |
-| 25 | `LAB-QR-NAS` | NAS 私有 TTY 完成 QR suite |
-| 26 | `LAB-EVIDENCE` | 导出、校验、人工复核证据；提交脱敏摘要和 promotion lock |
-| 27 | `WP-M3-RELEASE` | 用户创建 SSH 签名 tag；workflow 原样晋升候选并发布 |
-| 28 | `WP-SECURE-DISPOSAL` | 单独批准后删除秘密备份和旧工作区 |
+| 21 | `WP-M0-NONBLOCKING-GATES` | 按 ADR-0011 解耦 M0 状态，保留其余 hard gate；签名 PR 合入后停止 |
+| 22 | `LAB-PROVISION` | 仅在 ZOS 隔离能力通过时建立管理 VM/测试 VM；只做匿名 topology/status 预检 |
+| 23 | `RC-BUILD` | 从受保护 main 的精确 SHA 生成不可变 v1.0.0 candidate |
+| 24 | `LAB-TRANSFER` | 本地下载、验 attestation/hash，经批准的测试路径发送；远端不重建 |
+| 25 | `LAB-PASSWORD-NAS/BHK` | 每个网络/平台独立窗口执行 password suite |
+| 26 | `LAB-QR-NAS` | 私有 TTY 完成 QR suite |
+| 27 | `LAB-EVIDENCE` | 导出、校验、人工复核证据；提交脱敏摘要和 promotion lock |
+| 28 | `WP-M3-RELEASE` | 用户创建 SSH 签名 tag；workflow 原样晋升候选并发布 |
+| 29 | `WP-SECURE-DISPOSAL` | 单独批准后删除秘密备份和旧工作区 |
 
 ### 3.4 M0 历史清理
 
@@ -250,6 +251,8 @@ AGENTS.md
 隔离 mirror 使用固定无秘密 replace rules 重写全部相关 commit refs，并删除 mirror 中 `refs/codex/**` 等非 commit tree refs；执行 `git fsck --full` 和全 refs/full-history/reflog secret scan。重写前后冻结 tip tree SHA 必须一致；`v0.1.0` 不变，`v0.1.1`–`v0.1.3` 依输入重新映射。未知 ref、秘密残留或 tree 差异都必须丢弃 mirror，不接触远端。
 
 远端 push 前重新 fetch；使用逐 ref `--force-with-lease=<ref>:<old-sha>` 和一次 `--atomic` 更新，禁止 `git push --mirror`，不得推送 `refs/codex`、remote-tracking 或备份 refs。成功后只允许在干净历史上 forward-fix。随后 fresh clone 到新权威路径，复核 refs、tags、secret scan、tests 和 tree；旧工作区只读隔离，不再运行 Git。删除旧工作区或备份必须另行批准。
+
+GitHub Support 对已失去 ref 可达性的旧对象所做的外部缓存处置继续属于 M0/`SEC-HISTORY-001`，但按 [`ADR-0011`](../architecture/decisions/ADR-0011-nonblocking-m0-governance.md) 不再阻塞 Candidate、Promotion、release 或真实验收。M0 仍保持 `in_progress` 直至外部事项实际完成；不得用非阻塞语义伪造完成状态。
 
 ## 4. 离线安装、不可变候选与真实网络实验室
 
@@ -283,7 +286,7 @@ bundle 与 SHA 必须成对出现。离线模式不得初始化或调用网络�
 
 ### 4.2 不可变 candidate-set
 
-candidate workflow 只接受 `release_version: v1.0.0` 和完整 40 位 `source_commit`。`source_commit` 必须等于受保护 `main` 当前 tip，M0–M2 自动化门禁全部通过，最终 tag 尚不存在。候选构建后进入代码冻结；除 evidence/status/auth/release-note 白名单外的变化都会使候选失效。
+candidate workflow 只接受 `release_version: v1.0.0` 和完整 40 位 `source_commit`。`source_commit` 必须等于受保护 `main` 当前 tip，M1–M2 自动化门禁全部通过，最终 tag 尚不存在；M0 状态不参与判定。候选构建后进入代码冻结；除 evidence/status/auth/release-note 白名单外的变化都会使候选失效。
 
 Candidate ID 为 `v1.0.0-<SOURCE_SHA12>-<RUN_ID>.<RUN_ATTEMPT>`。集合结构：
 
@@ -412,7 +415,7 @@ Release notes 必须声明：新安装默认 meta、旧安装保持 legacy；配
 
 只有以下全部满足，M3 才能标记 complete：
 
-- 历史秘密、远端 refs 和 GitHub 缓存处理完成；clean clone 成为唯一权威工作区。
+- Candidate source 的 required CI、完整可达历史/refs/reflog 与工作树 secret scan 通过，clean clone 仍是唯一权威工作区；GitHub 不可达旧对象的外部缓存处置按 ADR-0011 独立跟踪，不是 M3 完成条件。
 - main/tag 严格保护已启用。
 - M1 SDK/协议全部门禁通过；M2 配置迁移、三入口和离线安装器完成。
 - 六平台原生安装门禁通过。
