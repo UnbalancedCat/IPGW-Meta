@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/UnbalancedCat/ipgw-meta/internal/candidate"
 )
@@ -81,5 +82,16 @@ func runVerify(args []string) (candidate.Result, error) {
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
 		return candidate.Result{}, candidate.ErrInvalidInput
 	}
-	return candidate.Verify(root)
+	normalized, ok := normalizeVerifyRoot(root)
+	if !ok {
+		return candidate.Result{}, candidate.ErrInvalidInput
+	}
+	return candidate.Verify(normalized)
+}
+
+func normalizeVerifyRoot(root string) (string, bool) {
+	if root == "" || !filepath.IsAbs(root) {
+		return "", false
+	}
+	return filepath.Clean(root), true
 }
