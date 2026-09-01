@@ -45,6 +45,20 @@ func TestCandidateWorkflowSafetyContract(t *testing.T) {
 	if len(workflow.Permissions) != 0 {
 		t.Fatalf("top-level permissions = %v, want empty", workflow.Permissions)
 	}
+	preflight := workflow.Jobs["preflight"]
+	checksRun := stepRun(t, preflight, "Verify protected main, tag absence, signature, and exact checks")
+	if !strings.Contains(checksRun, `-f scripts/candidate-checks.jq "$checks_json"`) {
+		t.Fatal("candidate preflight must evaluate the tested check-run jq filter")
+	}
+	if strings.Contains(checksRun, "all(.[] as $name;") {
+		t.Fatal("candidate preflight contains the invalid jq all(generator; condition) form")
+	}
+	_ = stepRun(t, preflight, "Require completed M1 through M2")
+	for _, step := range preflight.Steps {
+		if step.Name == "Require completed M0 through M2" {
+			t.Fatal("candidate preflight must not claim that M0 is required")
+		}
+	}
 
 	wantJobs := []string{"attest", "build", "native-install", "preflight"}
 	gotJobs := make([]string, 0, len(workflow.Jobs))
@@ -195,6 +209,42 @@ func TestCandidateWorkflowSafetyContract(t *testing.T) {
 		t.Fatal("legacy tag-triggered release workflow must remain absent")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("inspect legacy release workflow: %v", err)
+	}
+
+	filter, err := os.ReadFile(filepath.Join(root, "scripts", "candidate-checks.jq"))
+	if err != nil {
+		t.Fatalf("read candidate check-run filter: %v", err)
+	}
+	filterText := string(filter)
+	for _, name := range []string{
+		"Documentation, vet, and secrets",
+		"Tests (ubuntu-latest)",
+		"Tests (windows-latest)",
+		"Tests (macos-latest)",
+		"Race detector",
+		"Cross-build six supported targets",
+		"Package one native-install asset batch",
+		"Native install (linux-amd64, full)",
+		"Native install (linux-arm64, smoke)",
+		"Native install (windows-amd64, full)",
+		"Native install (windows-arm64, smoke)",
+		"Native install (darwin-amd64, smoke)",
+		"Native install (darwin-arm64, full)",
+	} {
+		if strings.Count(filterText, `"`+name+`"`) != 1 {
+			t.Fatalf("candidate check-run filter must require %q exactly once", name)
+		}
+	}
+	if !strings.Contains(filterText, "all(.[];") {
+		t.Fatal("candidate check-run filter must use a valid all(generator; condition) expression")
+	}
+
+	ci, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("read CI workflow: %v", err)
+	}
+	if strings.Count(string(ci), "run: bash scripts/test-candidate-checks-jq.sh") != 1 {
+		t.Fatal("CI must run the Candidate check-run jq regression exactly once")
 	}
 }
 

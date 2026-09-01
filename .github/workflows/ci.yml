@@ -40,6 +40,8 @@ jobs:
         run: python3 -W error::ResourceWarning scripts/test-promotion.py
       - name: Test milestone status gates
         run: bash scripts/test-milestone-gate.sh
+      - name: Test Candidate check-run gate
+        run: bash scripts/test-candidate-checks-jq.sh
       - name: Check documentation contracts
         run: go run ./cmd/doccheck --check
       - name: Vet

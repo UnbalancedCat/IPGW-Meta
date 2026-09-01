@@ -12,9 +12,9 @@ snapshot_at: 2026-09-01
 ## 当前执行
 
 - 执行者：Codex。
-- 工作包：M0 非阻塞发布门禁变更本地实现与 PR 收尾。维护者决定 M0 与 [`SEC-HISTORY-001`](../docs/architecture/security.md#sec-history-001历史泄露响应) 继续保留 `in_progress` 作为残余历史对象治理记录，但不再阻塞 Candidate、Promotion、release 或真实验收；docs-first 决策、规范、共用 gate、CI 接线与合成测试已完成并通过本地门禁。安全基线为 main `147bfa9bcaf357b175bc183f6e67543223a62d8b`，topic branch 为 `codex/m0-nonblocking-release-gates`，同时保留已完成的 ZOS `blocked` 与 BHK anonymous parser compatibility `pass` 分离结论。
-- 修改边界：允许扩展到决策/发布/安全/计划/状态/派生交接文档、Makefile gate 及其合成测试，并在完整本地门禁通过后暂存、创建签名提交、正常 push、创建 PR 并等待 required CI。不得自动 merge，不得把 M0 虚假标记为 `complete`，不得削弱 secret scan、签名、refs/ruleset、Candidate identity、attestation、live-gate 或 promotion 完整性门禁，也不得触发 Candidate、tag、release、校园网、认证、login/logout、网络修改或 VM。
-- 停止条件：出现预期外 tracked 文件、既有未暂存内容丢失、gate 对 M1/M2/M3 的 fail-closed 约束弱化、测试/签名/required checks 失败，或 PR 需要 bypass/admin/force 操作时立即停止。PR required CI 通过后向维护者报告并等待审阅，不自动 merge 或继续 `RC-BUILD`。M0 状态与 GitHub Support 外部事项继续如实保留；本工作包只解除其调度阻塞语义，不宣称历史清理完成。
+- 工作包：`RC-BUILD`。M0 非阻塞门禁已通过 PR #21 以普通 merge 合入受保护 main `3786382bfe0b91c428d45166d4dbb046b57c720e`；merge 双亲、tree、GitHub 签名及合入后 CI 六项/Native 七项均已复验。维护者已授权从精确 main 单次生成正式 `v1.0.0` Candidate。
+- 修改边界：允许只读冻结 main/rulesets/tag/release/checks，dispatch Candidate workflow，验证 artifact/manifest/hash/attestation，并在任何 build/upload 前的自动化缺陷上做最小 workflow/test/docs 修复、签名 PR 与普通 merge。不得 bypass/admin/force，不得创建 tag、draft 或 release，也不得启动校园网、认证、login/logout、网络修改或 VM。
+- 停止条件：source/main/tree/signature/ruleset/check/tag 发生漂移，Candidate preflight 之外出现部分上传，artifact/attestation 身份无法精确证明，或任何 secret/leak/CI 门禁失败时立即停止。run `33464985630` 已因 check-run jq 表达式编译错误在 preflight 封闭失败；build/upload/attestation 全部 skipped，修复合入前不得重跑。
 
 ## 已完成
 
