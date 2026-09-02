@@ -19,9 +19,16 @@ import (
 	securetransport "github.com/UnbalancedCat/ipgw-meta/internal/transport"
 )
 
-var acIDPattern = regexp.MustCompile(`^[0-9]{1,10}$`)
+var (
+	acIDPattern     = regexp.MustCompile(`^[0-9]{1,10}$`)
+	acIDBodyPattern = regexp.MustCompile(`(?:[?&]|\b)ac_id=([0-9]{1,10})`)
+)
 
-const maxDynamicScriptCandidates = 8
+const (
+	maxDynamicScriptCandidates = 8
+	maxACIDBodyCandidates      = 32
+	maxACIDDiscoveryResponses  = 2
+)
 
 func javascriptUTF16Length(value string) int {
 	return len(utf16.Encode([]rune(value)))
@@ -478,41 +485,37 @@ func observerOutcome(err error) string {
 
 func (c *Client) discoverACID(ctx context.Context) (string, error) {
 	redirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	client := c.newHTTPClient(redirect)
-	var discoveryErr error
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoints.captive.String(), nil)
-	if err == nil {
+	client := &http.Client{
+		Transport:     c.roundTripper,
+		CheckRedirect: redirect,
+		Timeout:       20 * time.Second,
+	}
+	target := *c.endpoints.captive
+	for responseIndex := 0; responseIndex < maxACIDDiscoveryResponses; responseIndex++ {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+		if err != nil {
+			return "", newError(CodeInternal, "gateway discovery request could not be created", false, err)
+		}
 		response, requestErr := client.Do(request)
 		if requestErr != nil {
-			discoveryErr = wrapError(CodeNetwork, "gateway discovery request failed", true, requestErr)
-			if errors.Is(requestErr, context.Canceled) || errors.Is(requestErr, context.DeadlineExceeded) {
-				return "", discoveryErr
-			}
-		} else {
-			defer response.Body.Close()
-			if location, locationErr := response.Location(); locationErr == nil {
-				if acID := location.Query().Get("ac_id"); acIDPattern.MatchString(acID) {
-					c.emit(ctx, EventProtocolDiscovered, "login", "ac_id", "redirect")
-					return acID, nil
-				}
-			}
-			data, readErr := securetransport.ReadAll(response.Body, statusResponseLimit)
-			if readErr != nil {
-				if errors.Is(readErr, securetransport.ErrResponseTooLarge) {
-					return "", newError(CodeProtocolChanged, "gateway discovery response exceeded the safe limit", false, readErr)
-				}
-				discoveryErr = wrapError(CodeNetwork, "gateway discovery response failed", true, readErr)
-				if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
-					return "", discoveryErr
-				}
-			} else {
-				match := regexp.MustCompile(`(?:[?&]|\b)ac_id=([0-9]{1,10})`).FindSubmatch(data)
-				if len(match) == 2 {
-					c.emit(ctx, EventProtocolDiscovered, "login", "ac_id", "body")
-					return string(match[1]), nil
-				}
-			}
+			return "", wrapError(CodeNetwork, "gateway discovery request failed", true, requestErr)
 		}
+		acID, outcome, next, inspectErr := c.inspectACIDDiscoveryResponse(response, responseIndex == 0)
+		closeErr := response.Body.Close()
+		if inspectErr != nil {
+			return "", inspectErr
+		}
+		if closeErr != nil {
+			return "", wrapError(CodeNetwork, "gateway discovery response failed", true, closeErr)
+		}
+		if acID != "" {
+			c.emit(ctx, EventProtocolDiscovered, "login", "ac_id", outcome)
+			return acID, nil
+		}
+		if next == nil {
+			break
+		}
+		target = *next
 	}
 	if networkKey := c.networkKey(); c.stateStore != nil && networkKey != "" {
 		state, found, loadErr := c.stateStore.Load(ctx, networkKey)
@@ -524,10 +527,134 @@ func (c *Client) discoverACID(ctx context.Context) (string, error) {
 			return state.ACID, nil
 		}
 	}
-	if discoveryErr != nil {
-		return "", discoveryErr
-	}
 	return "", newError(CodeProtocolChanged, "the active gateway access-controller ID could not be discovered", true, nil)
+}
+
+func (c *Client) inspectACIDDiscoveryResponse(response *http.Response, allowFollow bool) (string, string, *url.URL, error) {
+	if response == nil || response.Body == nil || response.Request == nil || response.Request.URL == nil {
+		return "", "", nil, newError(CodeNetwork, "gateway discovery response failed", true, nil)
+	}
+	var next *url.URL
+	rawLocation := response.Header.Get("Location")
+	if rawLocation != "" {
+		if !isACIDDiscoveryRedirect(response.StatusCode) {
+			return "", "", nil, newError(CodeProtocolChanged, "gateway discovery redirect is not allowed", false, nil)
+		}
+		if !validRawACIDDiscoveryLocation(rawLocation) {
+			return "", "", nil, newError(CodeProtocolChanged, "gateway discovery redirect is not allowed", false, nil)
+		}
+		location, locationErr := response.Location()
+		if locationErr != nil || !validACIDDiscoveryTarget(location, c.endpoints.captive) {
+			return "", "", nil, newError(CodeProtocolChanged, "gateway discovery redirect is not allowed", false, locationErr)
+		}
+		query, queryErr := url.ParseQuery(location.RawQuery)
+		if queryErr != nil {
+			return "", "", nil, newError(CodeProtocolChanged, "gateway discovery redirect is not allowed", false, queryErr)
+		}
+		if values, present := query["ac_id"]; present {
+			if len(values) != 1 || !acIDPattern.MatchString(values[0]) {
+				return "", "", nil, newError(CodeProtocolChanged, "gateway discovery access-controller ID is invalid", false, nil)
+			}
+			return values[0], "redirect", nil, nil
+		}
+		if allowFollow && location.RawQuery == "" && !location.ForceQuery {
+			next = location
+		}
+	}
+
+	data, readErr := securetransport.ReadAll(response.Body, statusResponseLimit)
+	if readErr != nil {
+		if errors.Is(readErr, securetransport.ErrResponseTooLarge) {
+			return "", "", nil, newError(CodeProtocolChanged, "gateway discovery response exceeded the safe limit", false, readErr)
+		}
+		return "", "", nil, wrapError(CodeNetwork, "gateway discovery response failed", true, readErr)
+	}
+	acID, bodyErr := uniqueACIDFromBody(data)
+	if bodyErr != nil {
+		return "", "", nil, newError(CodeProtocolChanged, "gateway discovery response is ambiguous", false, bodyErr)
+	}
+	if acID != "" {
+		return acID, "body", nil, nil
+	}
+	return "", "", next, nil
+}
+
+func uniqueACIDFromBody(data []byte) (string, error) {
+	matches := acIDBodyPattern.FindAllSubmatch(data, maxACIDBodyCandidates+1)
+	if len(matches) > maxACIDBodyCandidates {
+		return "", errors.New("too many access-controller ID candidates")
+	}
+	unique := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		if len(match) == 2 {
+			unique[string(match[1])] = struct{}{}
+		}
+	}
+	if len(unique) > 1 {
+		return "", errors.New("conflicting access-controller ID candidates")
+	}
+	for acID := range unique {
+		return acID, nil
+	}
+	return "", nil
+}
+
+func validRawACIDDiscoveryLocation(rawLocation string) bool {
+	location, err := url.Parse(rawLocation)
+	if err != nil || location.Opaque != "" || location.User != nil || location.Fragment != "" {
+		return false
+	}
+	return location.Path == "" || validACIDDiscoveryPath(location)
+}
+
+func validACIDDiscoveryTarget(target, gateway *url.URL) bool {
+	if target == nil || gateway == nil || target.Opaque != "" || target.User != nil || target.Fragment != "" ||
+		!strings.EqualFold(target.Hostname(), gateway.Hostname()) {
+		return false
+	}
+	switch strings.ToLower(target.Scheme) {
+	case "http":
+		if target.Port() != "" && target.Port() != "80" {
+			return false
+		}
+	case "https":
+		if target.Port() != "" && target.Port() != "443" {
+			return false
+		}
+	default:
+		return false
+	}
+	return validACIDDiscoveryPath(target)
+}
+
+func validACIDDiscoveryPath(target *url.URL) bool {
+	escapedPath := target.EscapedPath()
+	path, pathErr := url.PathUnescape(escapedPath)
+	if pathErr != nil || len(escapedPath) > 768 || len(path) < 1 || len(path) > 256 ||
+		!strings.HasPrefix(path, "/") || strings.Contains(path, "\\") {
+		return false
+	}
+	for _, character := range path {
+		if character < 0x20 || character == 0x7f {
+			return false
+		}
+	}
+	for _, segment := range strings.Split(path, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+func isACIDDiscoveryRedirect(status int) bool {
+	switch status {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) casRedirectPolicy(serviceURL *url.URL, capture *ticketCapture) func(*http.Request, []*http.Request) error {
