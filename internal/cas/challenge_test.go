@@ -2,6 +2,7 @@ package cas
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,34 @@ func TestChallengeIgnoresDormantControlsOnPasswordPage(t *testing.T) {
 	challenge, err := DetectChallenge(page)
 	if err != nil || challenge != ChallengeNone {
 		t.Fatalf("ordinary password page = %q, %v", challenge, err)
+	}
+}
+
+func TestChallengeClassifiesHTMLBeforeInlineJavaScript(t *testing.T) {
+	passwordForm := `<form id="loginForm"><input type="hidden" name="lt" value="synthetic-state"><input type="hidden" name="execution" value="e1s1"></form>`
+	page := []byte("\uFEFF  <html>" + passwordForm + `<script>
+		function initialize() { window.syntheticConfiguration = { enabled: true }; }
+		initialize();
+	</script></html>`)
+	challenge, err := DetectChallenge(page)
+	if err != nil || challenge != ChallengeNone {
+		t.Fatalf("ordinary HTML with inline JavaScript = %q, %v", challenge, err)
+	}
+	failure, err := DetectAuthenticationFailure(page)
+	if err != nil || failure {
+		t.Fatalf("ordinary HTML failure classification = %v, %v", failure, err)
+	}
+}
+
+func TestChallengeStillDetectsActiveHTMLBeforeInlineJavaScript(t *testing.T) {
+	page := []byte(`<html>
+		<form id="loginForm"><input name="lt"><input name="execution"></form>
+		<form id="smsVerify"><input name="smsCode"></form>
+		<script>function initialize() { return { enabled: true }; }</script>
+	</html>`)
+	challenge, err := DetectChallenge(page)
+	if err != nil || challenge != ChallengeSMSOTP {
+		t.Fatalf("active HTML challenge with inline JavaScript = %q, %v", challenge, err)
 	}
 }
 
@@ -85,6 +114,8 @@ func TestStructuredChallengeIsStrict(t *testing.T) {
 		`{"message":"需要短信验证码","message":"需要短信验证码"}`,
 		`{"challenge_kind":"sms_otp","type":"device_verification"}`,
 		`{"message":1}`,
+		`window.callback({"challenge_kind":"sms_otp"})`,
+		`callback({"challenge_kind":"sms_otp"}); alert(1)`,
 	} {
 		if _, err := DetectChallenge([]byte(input)); !errors.Is(err, ErrUnrecognized) {
 			t.Fatalf("DetectChallenge(%s) error = %v", input, err)
@@ -99,5 +130,21 @@ func TestStructuredChallengeIsStrict(t *testing.T) {
 	challenge, err = DetectChallenge([]byte(`{"challenge_kind":"sms_otp","type":"smsotp"}`))
 	if err != nil || challenge != ChallengeSMSOTP {
 		t.Fatalf("equivalent challenge aliases = %q, %v", challenge, err)
+	}
+
+	challenge, err = DetectChallenge([]byte(`callback({"challenge_kind":"sms_otp"});`))
+	if err != nil || challenge != ChallengeSMSOTP {
+		t.Fatalf("strict JSONP challenge = %q, %v", challenge, err)
+	}
+}
+
+func TestChallengeParseErrorsNeverContainResponseContent(t *testing.T) {
+	const canary = "CAS-CHALLENGE-RESPONSE-SECRET-CANARY"
+	response := []byte(`callback({"message":"` + canary + `","message":"` + canary + `"})`)
+	if _, err := DetectChallenge(response); !errors.Is(err, ErrUnrecognized) || strings.Contains(err.Error(), canary) {
+		t.Fatalf("challenge parse error leaked response content: %v", err)
+	}
+	if _, err := DetectAuthenticationFailure(response); !errors.Is(err, ErrUnrecognized) || strings.Contains(err.Error(), canary) {
+		t.Fatalf("authentication failure parse error leaked response content: %v", err)
 	}
 }
