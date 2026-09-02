@@ -21,6 +21,7 @@ generated: true
 | `ADR-0009` | 真实认证采用分离的管理面与测试面 | [docs/architecture/decisions/ADR-0009-separated-live-test-plane.md](architecture/decisions/ADR-0009-separated-live-test-plane.md#adr-0009真实认证采用分离的管理面与测试面) |
 | `ADR-0010` | macOS 固定系统别名作为受信任路径锚点 | [docs/architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md](architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md#adr-0010macos-固定系统别名作为受信任路径锚点) |
 | `ADR-0011` | M0 残余治理不阻塞发布流水线 | [docs/architecture/decisions/ADR-0011-nonblocking-m0-governance.md](architecture/decisions/ADR-0011-nonblocking-m0-governance.md#adr-0011m0-残余治理不阻塞发布流水线) |
+| `ADR-0012` | 有界匿名 ac_id redirect 发现 | [docs/architecture/decisions/ADR-0012-bounded-anonymous-acid-redirect.md](architecture/decisions/ADR-0012-bounded-anonymous-acid-redirect.md#adr-0012有界匿名-ac_id-redirect-发现) |
 | `ARCH-BOUNDARY-001` | 产品边界 | [docs/architecture/overview.md](architecture/overview.md#arch-boundary-001产品边界) |
 | `ARCH-CONCURRENCY-001` | 生命周期 | [docs/architecture/overview.md](architecture/overview.md#arch-concurrency-001生命周期) |
 | `ARCH-MODE-001` | 模式选择 | [docs/architecture/overview.md](architecture/overview.md#arch-mode-001模式选择) |
@@ -77,6 +78,7 @@ generated: true
 | `PROTO-LOGIN-001` | 登录成功不变量 | [docs/architecture/protocol-correctness.md](architecture/protocol-correctness.md#proto-login-001登录成功不变量) |
 | `PROTO-LOGOUT-001` | 幂等注销 | [docs/architecture/protocol-correctness.md](architecture/protocol-correctness.md#proto-logout-001幂等注销) |
 | `PROTO-REDIRECT-001` | CAS ticket 截获 | [docs/architecture/protocol-correctness.md](architecture/protocol-correctness.md#proto-redirect-001cas-ticket-截获) |
+| `PROTO-RESEARCH-001` | legacy 实现排障入口 | [docs/research/active-implementations.md](research/active-implementations.md#proto-research-001legacy-实现排障入口) |
 | `PROTO-TRANSPORT-001` | HTTPS-only | [docs/architecture/protocol-correctness.md](architecture/protocol-correctness.md#proto-transport-001https-only) |
 | `REL-APPROVAL-001` | 高风险动作逐项批准 | [docs/operations/release.md](operations/release.md#rel-approval-001高风险动作逐项批准) |
 | `REL-ATTEST-001` | Candidate manifest 与 provenance | [docs/operations/release.md](operations/release.md#rel-attest-001candidate-manifest-与-provenance) |

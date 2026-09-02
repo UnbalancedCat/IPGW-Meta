@@ -860,6 +860,145 @@ func TestDiscoverACIDPreservesRequestCancellation(t *testing.T) {
 	}
 }
 
+func TestDiscoverACIDFollowsOneAnonymousSameGatewayRedirect(t *testing.T) {
+	requestCount := 0
+	client, err := NewClient(WithRoundTripper(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requestCount++
+		switch requestCount {
+		case 1:
+			response := testResponse(request, http.StatusFound, `<html>intermediate</html>`, "http://ipgw.neu.edu.cn/captive/entry")
+			response.Header.Set("Set-Cookie", "anonymous-canary=must-not-be-replayed")
+			return response, nil
+		case 2:
+			if request.URL.Path != "/captive/entry" || request.URL.RawQuery != "" {
+				t.Fatalf("intermediate request target = %q", request.URL.Redacted())
+			}
+			if request.Header.Get("Cookie") != "" {
+				t.Fatal("anonymous discovery replayed a Cookie")
+			}
+			return testResponse(request, http.StatusFound, `ac_id=15`, "http://ipgw.neu.edu.cn/srun_portal_pc?ac_id=15"), nil
+		default:
+			return nil, fmt.Errorf("unexpected discovery request %d", requestCount)
+		}
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	acID, err := client.discoverACID(context.Background())
+	if err != nil || acID != "15" || requestCount != 2 {
+		t.Fatalf("discoverACID() = %q, %v, requests=%d", acID, err, requestCount)
+	}
+}
+
+func TestDiscoverACIDAcceptsSecondResponseBody(t *testing.T) {
+	requestCount := 0
+	client, _ := NewClient(WithRoundTripper(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requestCount++
+		if requestCount == 1 {
+			return testResponse(request, http.StatusTemporaryRedirect, ``, "https://ipgw.neu.edu.cn/captive/entry"), nil
+		}
+		return testResponse(request, http.StatusOK, `<script>const target = "?ac_id=15";</script>`, ""), nil
+	})))
+	acID, err := client.discoverACID(context.Background())
+	if err != nil || acID != "15" || requestCount != 2 {
+		t.Fatalf("discoverACID() = %q, %v, requests=%d", acID, err, requestCount)
+	}
+}
+
+func TestDiscoverACIDRejectsUnsafeOrExcessRedirects(t *testing.T) {
+	tests := []struct {
+		name           string
+		firstLocation  string
+		secondLocation string
+		wantRequests   int
+	}{
+		{name: "cross host", firstLocation: "https://example.invalid/?ac_id=15", wantRequests: 1},
+		{name: "nondefault port", firstLocation: "http://ipgw.neu.edu.cn:8080/entry", wantRequests: 1},
+		{name: "queryful intermediate", firstLocation: "http://ipgw.neu.edu.cn/entry?next=1", wantRequests: 1},
+		{name: "relative dot segment", firstLocation: "captive/../entry", wantRequests: 1},
+		{
+			name: "third hop", firstLocation: "http://ipgw.neu.edu.cn/entry",
+			secondLocation: "http://ipgw.neu.edu.cn/another", wantRequests: 2,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requestCount := 0
+			client, _ := NewClient(WithRoundTripper(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				requestCount++
+				location := test.firstLocation
+				if requestCount == 2 {
+					location = test.secondLocation
+				}
+				return testResponse(request, http.StatusFound, ``, location), nil
+			})))
+			_, err := client.discoverACID(context.Background())
+			if !IsCode(err, CodeProtocolChanged) || requestCount != test.wantRequests {
+				t.Fatalf("error=%v code=%q requests=%d", err, CodeOf(err), requestCount)
+			}
+		})
+	}
+}
+
+func TestDiscoverACIDRejectsLocationOnNonRedirectResponse(t *testing.T) {
+	client, _ := NewClient(WithRoundTripper(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return testResponse(request, http.StatusOK, ``, "http://ipgw.neu.edu.cn/?ac_id=15"), nil
+	})))
+	_, err := client.discoverACID(context.Background())
+	if !IsCode(err, CodeProtocolChanged) {
+		t.Fatalf("error=%v code=%q", err, CodeOf(err))
+	}
+}
+
+func TestUniqueACIDFromBodyFailsClosed(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		want    string
+		wantErr bool
+	}{
+		{name: "none", body: `<html></html>`},
+		{name: "one", body: `?ac_id=15`, want: "15"},
+		{name: "repeated same", body: `?ac_id=15&amp;next=?ac_id=15`, want: "15"},
+		{name: "conflict", body: `?ac_id=1&amp;next=?ac_id=15`, wantErr: true},
+		{name: "too many", body: strings.Repeat(`?ac_id=15 `, maxACIDBodyCandidates+1), wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := uniqueACIDFromBody([]byte(test.body))
+			if got != test.want || (err != nil) != test.wantErr {
+				t.Fatalf("uniqueACIDFromBody() = %q, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestValidACIDDiscoveryTarget(t *testing.T) {
+	gateway, _ := url.Parse("http://ipgw.neu.edu.cn/")
+	for _, raw := range []string{
+		"http://ipgw.neu.edu.cn/entry",
+		"https://ipgw.neu.edu.cn/srun_portal_pc?ac_id=15",
+	} {
+		target, _ := url.Parse(raw)
+		if !validACIDDiscoveryTarget(target, gateway) {
+			t.Fatalf("validACIDDiscoveryTarget(%q) = false", raw)
+		}
+	}
+	for _, raw := range []string{
+		"https://example.invalid/entry",
+		"http://ipgw.neu.edu.cn:8080/entry",
+		"http://user@ipgw.neu.edu.cn/entry",
+		"http://ipgw.neu.edu.cn/entry#fragment",
+		"http://ipgw.neu.edu.cn/a/../entry",
+		"file:///entry",
+	} {
+		target, _ := url.Parse(raw)
+		if validACIDDiscoveryTarget(target, gateway) {
+			t.Fatalf("validACIDDiscoveryTarget(%q) = true", raw)
+		}
+	}
+}
+
 func TestPasswordLoginCapsDynamicScriptCandidates(t *testing.T) {
 	credentialCalls := 0
 	scripts := strings.Repeat(`<script src="/tpass/login-bundle.js"></script>`, maxDynamicScriptCandidates+1)

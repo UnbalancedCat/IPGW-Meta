@@ -8,6 +8,7 @@ revision: 2026-08-28-r2
 ## PROTO-DISCOVERY-001：发现优先
 
 - 每次认证动态解析 CAS form action、`lt`、`execution`、公开登录脚本和 RSA 公钥。
+- `ac_id` 发现只允许匿名 GET，最多读取两个有界响应：初始 captive 响应，以及至多一个经过严格校验的中间 redirect 响应。中间 Location 必须解析后仍为同一网关 host、`http` 或 `https` 默认端口、无 userinfo、fragment 和 query，路径不得含控制字符、反斜杠或点段；发现客户端不得创建 Cookie Jar，也不得发送账号、Cookie、ticket 或凭据。每个响应先检查同网关 Location 中唯一的 1–10 位十进制 `ac_id`，再检查有界正文中的唯一候选；只有首个响应允许继续一次，第二个响应后无论是否还有 Location 都必须停止。非法 Location、冲突/过多候选、第三跳需求或无法证明的形状统一返回 `protocol_changed`，不得按网卡类型、历史常量或公网可达性猜测 `ac_id`。
 - 状态解析必须明确区分 JSON、JSONP、HTML 和未知响应；先判断内容类型/结构，再做业务解析。
 - legacy CSV 仅在去除首尾空白后为单个无内嵌 CR/LF 的 CSV record、字段数至少为 9、位置 0 是合法 username 且位置 8 是全局单播 IPv4 时，才构成 online 身份证据；任一身份条件缺失或无效都返回 `protocol_changed`。其他位置不得覆盖或冲突推断 username/IP，也不得参与 online/offline 判定。
 - legacy CSV 的位置 6/7/11 只形成一个 all-or-nothing 的可选摘要候选：位置 6 和 7 必须同时是 `int64` 范围内的非负十进制整数，且位置 11 在存在且非空时必须可精确转换为余额 minor units，才返回完整 `OnlineSummary`；否则整个摘要为 unavailable（`nil`），不得返回部分摘要或因可选摘要不可用而否定已经成立的 online 身份。未解释的非身份列保持 opaque，不得猜测其语义。
