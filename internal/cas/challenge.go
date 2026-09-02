@@ -15,19 +15,19 @@ var challengeFields = []string{"message", "msg", "description", "error", "status
 // are decoded strictly; malformed JSON/JSONP is a protocol error rather than
 // evidence for a non-challenge state.
 func DetectChallenge(data []byte) (Challenge, error) {
-	trimmed := strings.TrimSpace(string(data))
+	trimmed := normalizeResponseText(data)
 	if trimmed == "" {
 		return ChallengeNone, nil
 	}
+	if strings.HasPrefix(trimmed, "<") {
+		return htmlChallenge([]byte(trimmed))
+	}
 	if looksStructured(trimmed) {
-		object, err := wirejson.DecodeObjectOrJSONP(data)
+		object, err := wirejson.DecodeObjectOrJSONP([]byte(trimmed))
 		if err != nil {
 			return ChallengeNone, ErrUnrecognized
 		}
 		return structuredChallenge(object)
-	}
-	if strings.HasPrefix(trimmed, "<") {
-		return htmlChallenge(data)
 	}
 	return challengeFromText(trimmed), nil
 }
@@ -36,12 +36,29 @@ func DetectChallenge(data []byte) (Challenge, error) {
 // Dormant assets and hidden DOM controls are excluded before visible text is
 // considered.
 func DetectAuthenticationFailure(data []byte) (bool, error) {
-	trimmed := strings.TrimSpace(string(data))
+	trimmed := normalizeResponseText(data)
 	if trimmed == "" {
 		return false, nil
 	}
+	if strings.HasPrefix(trimmed, "<") {
+		document, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
+		if err != nil {
+			return false, ErrUnrecognized
+		}
+		normalLogin := hasPasswordForm(document)
+		sanitizeDOM(document)
+		if normalLogin {
+			failure := false
+			document.Find(`[role="alert"], [aria-live], .auth-error, .login-error, .error-message, .errors, #error, #errorMsg, #msg`).EachWithBreak(func(_ int, selection *goquery.Selection) bool {
+				failure = authenticationFailureFromText(selection.Text())
+				return !failure
+			})
+			return failure, nil
+		}
+		return authenticationFailureFromText(document.Text()), nil
+	}
 	if looksStructured(trimmed) {
-		object, err := wirejson.DecodeObjectOrJSONP(data)
+		object, err := wirejson.DecodeObjectOrJSONP([]byte(trimmed))
 		if err != nil {
 			return false, ErrUnrecognized
 		}
@@ -59,23 +76,6 @@ func DetectAuthenticationFailure(data []byte) (bool, error) {
 			}
 		}
 		return false, nil
-	}
-	if strings.HasPrefix(trimmed, "<") {
-		document, err := goquery.NewDocumentFromReader(bytes.NewReader(data))
-		if err != nil {
-			return false, ErrUnrecognized
-		}
-		normalLogin := hasPasswordForm(document)
-		sanitizeDOM(document)
-		if normalLogin {
-			failure := false
-			document.Find(`[role="alert"], [aria-live], .auth-error, .login-error, .error-message, .errors, #error, #errorMsg, #msg`).EachWithBreak(func(_ int, selection *goquery.Selection) bool {
-				failure = authenticationFailureFromText(selection.Text())
-				return !failure
-			})
-			return failure, nil
-		}
-		return authenticationFailureFromText(document.Text()), nil
 	}
 	return authenticationFailureFromText(trimmed), nil
 }
@@ -295,6 +295,11 @@ func looksStructured(value string) bool {
 	}
 	open := strings.IndexByte(value, '(')
 	return open > 0 && strings.Contains(value[open+1:], "{")
+}
+
+func normalizeResponseText(data []byte) string {
+	value := strings.TrimPrefix(string(data), "\ufeff")
+	return strings.TrimSpace(value)
 }
 
 func normalizeIdentifier(value string) string {

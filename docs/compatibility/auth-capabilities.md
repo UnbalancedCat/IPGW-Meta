@@ -62,6 +62,8 @@ revision: 2026-08-28-r2
 
 任意认证方法都可能得到以下结果：成功、`authentication`、`interaction_required`、`protocol_changed`。挑战不得被误报为密码错误或登录成功。
 
+普通 CAS HTML 登录页必须先按 HTML DOM 识别，再在移除 dormant script/template/hidden controls 后检查活动挑战；页面内 JavaScript 的括号或对象字面量不构成 JSONP 响应证据。只有覆盖整个响应的严格 JSON/JSONP envelope 才能被接受为结构化挑战，具体边界见 [`ADR-0013`](../architecture/decisions/ADR-0013-cas-html-before-jsonp.md)。
+
 `interaction_required` 的结构化 details 只允许包含：
 
 - `challenge_kind`：`sms_otp`、`device_verification`、`account_setup`、`qr_approval`、`unknown`；

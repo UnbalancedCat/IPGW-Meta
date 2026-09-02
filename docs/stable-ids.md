@@ -22,6 +22,7 @@ generated: true
 | `ADR-0010` | macOS 固定系统别名作为受信任路径锚点 | [docs/architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md](architecture/decisions/ADR-0010-macos-trusted-system-path-alias.md#adr-0010macos-固定系统别名作为受信任路径锚点) |
 | `ADR-0011` | M0 残余治理不阻塞发布流水线 | [docs/architecture/decisions/ADR-0011-nonblocking-m0-governance.md](architecture/decisions/ADR-0011-nonblocking-m0-governance.md#adr-0011m0-残余治理不阻塞发布流水线) |
 | `ADR-0012` | 有界匿名 ac_id redirect 发现 | [docs/architecture/decisions/ADR-0012-bounded-anonymous-acid-redirect.md](architecture/decisions/ADR-0012-bounded-anonymous-acid-redirect.md#adr-0012有界匿名-ac_id-redirect-发现) |
+| `ADR-0013` | CAS HTML 优先于 JSONP challenge 分类 | [docs/architecture/decisions/ADR-0013-cas-html-before-jsonp.md](architecture/decisions/ADR-0013-cas-html-before-jsonp.md#adr-0013cas-html-优先于-jsonp-challenge-分类) |
 | `ARCH-BOUNDARY-001` | 产品边界 | [docs/architecture/overview.md](architecture/overview.md#arch-boundary-001产品边界) |
 | `ARCH-CONCURRENCY-001` | 生命周期 | [docs/architecture/overview.md](architecture/overview.md#arch-concurrency-001生命周期) |
 | `ARCH-MODE-001` | 模式选择 | [docs/architecture/overview.md](architecture/overview.md#arch-mode-001模式选择) |
