@@ -54,7 +54,7 @@ func ParsePage(base *url.URL, data []byte) (Page, error) {
 			name, _ := selection.Attr("name")
 			value, _ := selection.Attr("value")
 			if name != "" {
-				result.Hidden.Set(name, value)
+				result.Hidden.Add(name, value)
 			}
 		})
 	}

@@ -52,3 +52,19 @@ func TestParsePageRejectsMissingBaseAndOversizedKey(t *testing.T) {
 		t.Fatalf("oversized public key was accepted")
 	}
 }
+
+func TestParsePagePreservesDuplicateNamedControlsForCallerValidation(t *testing.T) {
+	base, err := url.Parse("https://pass.example.test/tpass/login?service=synthetic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := ParsePage(base, []byte(`<form id="loginForm" action="/tpass/login">`+
+		`<input name="lt" value="first"><input name="lt" value="second">`+
+		`<input name="execution" value="e1s1"></form>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := page.Hidden["lt"]; len(got) != 2 || got[0] != "first" || got[1] != "second" {
+		t.Fatalf("duplicate lt values = %#v", got)
+	}
+}

@@ -24,6 +24,7 @@ generated: true
 | `ADR-0012` | 有界匿名 ac_id redirect 发现 | [docs/architecture/decisions/ADR-0012-bounded-anonymous-acid-redirect.md](architecture/decisions/ADR-0012-bounded-anonymous-acid-redirect.md#adr-0012有界匿名-ac_id-redirect-发现) |
 | `ADR-0013` | CAS HTML 优先于 JSONP challenge 分类 | [docs/architecture/decisions/ADR-0013-cas-html-before-jsonp.md](architecture/decisions/ADR-0013-cas-html-before-jsonp.md#adr-0013cas-html-优先于-jsonp-challenge-分类) |
 | `ADR-0014` | CAS RSA-512 仅作为 HTTPS 内兼容封装 | [docs/architecture/decisions/ADR-0014-cas-rsa-compatibility-envelope.md](architecture/decisions/ADR-0014-cas-rsa-compatibility-envelope.md#adr-0014cas-rsa-512-仅作为-https-内兼容封装) |
+| `ADR-0015` | CAS 密码提交采用六字段闭包 | [docs/architecture/decisions/ADR-0015-cas-submit-closed-fields.md](architecture/decisions/ADR-0015-cas-submit-closed-fields.md#adr-0015cas-密码提交采用六字段闭包) |
 | `ARCH-BOUNDARY-001` | 产品边界 | [docs/architecture/overview.md](architecture/overview.md#arch-boundary-001产品边界) |
 | `ARCH-CONCURRENCY-001` | 生命周期 | [docs/architecture/overview.md](architecture/overview.md#arch-concurrency-001生命周期) |
 | `ARCH-MODE-001` | 模式选择 | [docs/architecture/overview.md](architecture/overview.md#arch-mode-001模式选择) |

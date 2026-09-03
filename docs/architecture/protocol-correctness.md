@@ -9,6 +9,7 @@ revision: 2026-08-28-r2
 
 - 每次认证动态解析 CAS form action、`lt`、`execution`、公开登录脚本和 RSA 公钥。
 - CAS RSA 公钥只接受本次认证从官方同源 HTTPS 页面或公开登录脚本动态发现的 PKIX／PKCS#1 RSA，模数范围为 512–8192 位；不得固定、缓存或使用历史 fallback。RSA PKCS#1 v1.5 只编码 UTF-8 `username + password` 协议字段，明文必须不超过 `key_size_bytes - 11`；超长、畸形、非 RSA 或越界密钥均在 CAS POST 前返回 `protocol_changed`，不得截断、改发明文或降低 TLS。该兼容边界见 [`ADR-0014`](decisions/ADR-0014-cas-rsa-compatibility-envelope.md)。
+- CAS 密码 POST 必须从新的表单值集合开始，只提交 `rsa`、`ul`、`pl`、`lt`、`execution`、`_eventId=submit` 六个字段；`lt` 与 `execution` 必须分别是动态 form 中唯一且非空的值，其余四项由本次凭据操作计算或固定。不得克隆或透传页面内其他具名 input、未知隐藏字段、按钮、禁用控件或重复字段。未知字段若成为必需协议输入，必须先形成新的匿名观察、规范和显式 allowlist，不得把不可信 DOM 自动扩大为凭据 POST。该闭包见 [`ADR-0015`](decisions/ADR-0015-cas-submit-closed-fields.md)。
 - `ac_id` 发现只允许匿名 GET，最多读取两个有界响应：初始 captive 响应，以及至多一个经过严格校验的中间 redirect 响应。中间 Location 必须解析后仍为同一网关 host、`http` 或 `https` 默认端口、无 userinfo、fragment 和 query，路径不得含控制字符、反斜杠或点段；发现客户端不得创建 Cookie Jar，也不得发送账号、Cookie、ticket 或凭据。每个响应先检查同网关 Location 中唯一的 1–10 位十进制 `ac_id`，再检查有界正文中的唯一候选；只有首个响应允许继续一次，第二个响应后无论是否还有 Location 都必须停止。非法 Location、冲突/过多候选、第三跳需求或无法证明的形状统一返回 `protocol_changed`，不得按网卡类型、历史常量或公网可达性猜测 `ac_id`。
 - 状态解析必须明确区分 JSON、JSONP、HTML 和未知响应；先判断内容类型/结构，再做业务解析。
 - CAS challenge 解析在去除可选 UTF-8 BOM 与首尾空白后，必须先按首个有效字符识别 HTML；首字符为 `<` 的完整页面不得因内部 `<script>` 出现括号或对象字面量而被归类为 JSONP。JSONP 只接受覆盖整个响应的单一安全 callback 调用，其唯一参数必须是严格 JSON object；不完整、重复字段或多余脚本继续返回 `protocol_changed`。
