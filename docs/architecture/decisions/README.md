@@ -21,5 +21,6 @@ revision: 2026-08-28-r2
 | [ADR-0012](ADR-0012-bounded-anonymous-acid-redirect.md) | accepted | `ac_id` 只在无 Cookie 的同网关匿名窗口内有界跟随一次 |
 | [ADR-0013](ADR-0013-cas-html-before-jsonp.md) | accepted | CAS challenge 先识别完整 HTML，再接受严格的整响应 JSON/JSONP envelope |
 | [ADR-0014](ADR-0014-cas-rsa-compatibility-envelope.md) | accepted | 仅在官方同源 HTTPS 内接受动态 CAS RSA-512 兼容封装 |
+| [ADR-0015](ADR-0015-cas-submit-closed-fields.md) | accepted | CAS 密码 POST 使用六字段 closed-world allowlist |
 
 新增或改变公共行为时新建 ADR，不改写已接受 ADR 的历史结论；被替代的记录标为 `superseded` 并链接后继记录。

@@ -17,6 +17,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -196,9 +197,40 @@ func TestPasswordLoginCapturesHTTPServiceTicketWithoutSendingIt(t *testing.T) {
 		case request.URL.Scheme == "http" && request.URL.Host == "ipgw.neu.edu.cn" && request.URL.Path == "/":
 			return testResponse(request, http.StatusFound, "", "http://ipgw.neu.edu.cn/srun_portal_pc?ac_id=15"), nil
 		case request.URL.Host == "pass.neu.edu.cn" && request.URL.Path == "/tpass/login" && request.Method == http.MethodGet:
-			html := `<form id="loginForm" action="/tpass/auth"><input name="lt" value="LT-1"><input name="execution" value="e1s1"></form><script>var publicKeyStr='` + publicKey + `';</script>`
+			html := `<form id="loginForm" action="/tpass/auth?` + request.URL.RawQuery + `">` +
+				`<input name="lt" value="LT-1"><input name="execution" value="e1s1">` +
+				`<input name="rsa" value="PAGE-RSA-CANARY"><input name="ul" value="999">` +
+				`<input name="pl" value="999"><input name="_eventId" value="PAGE-EVENT-CANARY">` +
+				`<input name="UNTRUSTED-CONTROL-CANARY" value="FORM-VALUE-CANARY"></form>` +
+				`<script>var publicKeyStr='` + publicKey + `';</script>`
 			return testResponse(request, http.StatusOK, html, ""), nil
 		case request.URL.Host == "pass.neu.edu.cn" && request.URL.Path == "/tpass/auth" && request.Method == http.MethodPost:
+			if request.URL.Query().Get("service") != "http://ipgw.neu.edu.cn/srun_portal_sso?ac_id=15" {
+				return nil, fmt.Errorf("dynamic CAS form action lost the expected service")
+			}
+			if err := request.ParseForm(); err != nil {
+				return nil, fmt.Errorf("parse CAS form: %w", err)
+			}
+			keys := make([]string, 0, len(request.PostForm))
+			for key := range request.PostForm {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			if got, want := strings.Join(keys, ","), "_eventId,execution,lt,pl,rsa,ul"; got != want {
+				return nil, fmt.Errorf("CAS form keys = %q, want %q", got, want)
+			}
+			for _, key := range keys {
+				if len(request.PostForm[key]) != 1 {
+					return nil, fmt.Errorf("CAS form key %q has %d values", key, len(request.PostForm[key]))
+				}
+			}
+			if request.PostForm.Get("lt") != "LT-1" || request.PostForm.Get("execution") != "e1s1" ||
+				request.PostForm.Get("ul") != "5" || request.PostForm.Get("pl") != "8" ||
+				request.PostForm.Get("_eventId") != "submit" ||
+				request.PostForm.Get("UNTRUSTED-CONTROL-CANARY") != "" ||
+				request.PostForm.Get("rsa") == "PAGE-RSA-CANARY" {
+				return nil, fmt.Errorf("CAS form closed-world values were not enforced")
+			}
 			return testResponse(request, http.StatusFound, "", "http://ipgw.neu.edu.cn/srun_portal_sso?ac_id=15&ticket=SECRET-TICKET"), nil
 		case request.URL.Scheme == "https" && request.URL.Host == "ipgw.neu.edu.cn" && request.URL.Path == "/v1/srun_portal_sso":
 			if request.URL.Query().Get("ticket") != "SECRET-TICKET" || request.URL.Query().Get("ac_id") != "15" {
@@ -233,6 +265,57 @@ func TestPasswordLoginCapturesHTTPServiceTicketWithoutSendingIt(t *testing.T) {
 			t.Fatalf("ticket-bearing HTTP redirect was sent: %s", rawURL)
 		}
 	}
+}
+
+func TestPasswordLoginRejectsDuplicateDynamicStateBeforeCredentialRead(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := base64.StdEncoding.EncodeToString(der)
+	credentialCalls := 0
+	postCalls := 0
+	roundTripper := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch {
+		case request.URL.Host == "ipgw.neu.edu.cn" && request.URL.Path == "/cgi-bin/rad_user_info":
+			return testResponse(request, http.StatusOK, `not_online_error`, ""), nil
+		case request.URL.Scheme == "http" && request.URL.Host == "ipgw.neu.edu.cn" && request.URL.Path == "/":
+			return testResponse(request, http.StatusFound, "", "http://ipgw.neu.edu.cn/?ac_id=1"), nil
+		case request.URL.Host == "pass.neu.edu.cn" && request.URL.Path == "/tpass/login" && request.Method == http.MethodGet:
+			page := `<form id="loginForm" action="/tpass/auth">` +
+				`<input name="lt" value="LT-FIRST"><input name="lt" value="LT-SECOND">` +
+				`<input name="execution" value="e1s1"></form>` +
+				`<script>var publicKeyStr='` + publicKey + `';</script>`
+			return testResponse(request, http.StatusOK, page, ""), nil
+		case request.URL.Host == "pass.neu.edu.cn" && request.Method == http.MethodPost:
+			postCalls++
+			return nil, errors.New("unexpected CAS POST")
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", request.URL.Redacted())
+		}
+	})
+	client, err := NewClient(WithRoundTripper(roundTripper))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Login(context.Background(), LoginRequest{
+		Method:           AuthMethodPassword,
+		ExpectedUsername: "alice",
+		Credentials: CredentialProviderFunc(func(context.Context, CredentialRequest) (Credential, error) {
+			credentialCalls++
+			return Credential{Password: "PASSWORD-CANARY"}, nil
+		}),
+	})
+	if !IsCode(err, CodeProtocolChanged) || credentialCalls != 0 || postCalls != 0 {
+		t.Fatalf("duplicate state error = %v, code=%q, credential calls=%d, POST calls=%d", err, CodeOf(err), credentialCalls, postCalls)
+	}
+	assertErrorDoesNotContain(t, err, "LT-FIRST")
+	assertErrorDoesNotContain(t, err, "LT-SECOND")
+	assertErrorDoesNotContain(t, err, "PASSWORD-CANARY")
 }
 
 func TestEncryptCredentialAcceptsPKIXAndPKCS1RSAKeys(t *testing.T) {

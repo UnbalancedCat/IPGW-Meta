@@ -141,7 +141,9 @@ func (c *Client) passwordLogin(ctx context.Context, client *http.Client, request
 	if isNilInterface(request.Credentials) {
 		return LoginResult{}, newError(CodeConfig, "password login requires a credential provider", false, nil)
 	}
-	if page.Action == nil || page.Hidden.Get("lt") == "" || page.Hidden.Get("execution") == "" {
+	lt, ltOK := singleFormValue(page.Hidden, "lt")
+	execution, executionOK := singleFormValue(page.Hidden, "execution")
+	if page.Action == nil || !ltOK || !executionOK {
 		return LoginResult{}, newError(CodeProtocolChanged, "CAS login form is missing required fields", false, nil)
 	}
 	if err := validateSameHTTPSOrigin(page.Action, c.endpoints.casLogin); err != nil {
@@ -198,10 +200,12 @@ func (c *Client) passwordLogin(ctx context.Context, client *http.Client, request
 		return LoginResult{}, wrapError(CodeProtocolChanged, "CAS public key or encryption contract changed", false, err)
 	}
 
-	form := cloneValues(page.Hidden)
+	form := make(url.Values, 6)
 	form.Set("rsa", encrypted)
 	form.Set("ul", strconv.Itoa(javascriptUTF16Length(request.ExpectedUsername)))
 	form.Set("pl", strconv.Itoa(javascriptUTF16Length(credential.Password)))
+	form.Set("lt", lt)
+	form.Set("execution", execution)
 	form.Set("_eventId", "submit")
 	capture := &ticketCapture{}
 	postClient := c.newHTTPClient(c.casRedirectPolicy(serviceURL, capture))
@@ -818,10 +822,10 @@ func cloneURL(source *url.URL) *url.URL {
 	return &clone
 }
 
-func cloneValues(source url.Values) url.Values {
-	result := make(url.Values, len(source))
-	for key, values := range source {
-		result[key] = append([]string(nil), values...)
+func singleFormValue(values url.Values, key string) (string, bool) {
+	discovered, ok := values[key]
+	if !ok || len(discovered) != 1 || discovered[0] == "" {
+		return "", false
 	}
-	return result
+	return discovered[0], true
 }
