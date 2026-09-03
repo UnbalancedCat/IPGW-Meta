@@ -33,6 +33,8 @@ M0 与本节的未完成外部事项必须继续如实跟踪，但不再作为 C
 
 任何账号、密码、Cookie 或 ticket 都不得通过 HTTP 发送。系统 TLS 校验不可关闭，也不提供明文兼容开关。具体 redirect 和 endpoint 行为见 [`PROTO-REDIRECT-001`](protocol-correctness.md)。
 
+CAS 页面要求的 RSA PKCS#1 v1.5 字段是 HTTPS 内的协议兼容封装，不是传输安全边界。只有从官方 CAS 同源 HTTPS 页面或公开登录脚本为本次认证动态发现、并满足 [`ADR-0014`](decisions/ADR-0014-cas-rsa-compatibility-envelope.md) 结构与容量约束的密钥才可使用；不得固定、缓存或 fallback 到历史公钥。现网 RSA-512 例外不扩大到 TLS、release signing、配置加密或任何其他密码学用途。
+
 匿名 captive/`ac_id` 发现不复用认证 Cookie Jar，最多在同一网关 host 内手动跟随一次经过 [`PROTO-DISCOVERY-001`](protocol-correctness.md#proto-discovery-001发现优先) 校验的无 query redirect。该例外只允许产生不可信协议提示，不扩大到 CAS、activation、status、logout、跨 host 跳转或网卡类型 fallback。
 
 ## SEC-LOG-001：最小可观测性

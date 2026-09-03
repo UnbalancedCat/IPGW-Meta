@@ -24,7 +24,7 @@ revision: 2026-08-28-r2
 ### AUTH-PASSWORD-001：CAS 用户名密码
 
 - 状态：`synthetic_covered + live_unverified`。
-- v1 行为：动态发现 CAS 表单和公钥，经 HTTPS activation 后精确验证最终身份。
+- v1 行为：动态发现 CAS 表单和同源公开脚本公钥；当前官方协议的 RSA-512 PKCS#1 v1.5 字段只作为系统 PKI HTTPS 内的兼容封装，并受 [`ADR-0014`](../architecture/decisions/ADR-0014-cas-rsa-compatibility-envelope.md) 的来源、大小和明文容量约束。经 HTTPS activation 后精确验证最终身份。
 - 发布门禁：在校园有线与无线网络各完成一次真实验证。
 
 ### AUTH-QR-001：Terminal QR
