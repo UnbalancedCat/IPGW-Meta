@@ -269,11 +269,8 @@ func TestEncryptCredentialAcceptsPKIXAndPKCS1RSAKeys(t *testing.T) {
 	}
 }
 
-func TestEncryptCredentialRejectsWeakRSAForBothEncodings(t *testing.T) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestEncryptCredentialAcceptsObservedMinimumRSAForBothEncodings(t *testing.T) {
+	privateKey := generateSmallSyntheticRSAKey(t, casRSAMinBits)
 	pkixDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
 	if err != nil {
 		t.Fatal(err)
@@ -283,8 +280,68 @@ func TestEncryptCredentialRejectsWeakRSAForBothEncodings(t *testing.T) {
 		"PKCS#1": x509.MarshalPKCS1PublicKey(&privateKey.PublicKey),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := encryptCredential("alice", "password", base64.StdEncoding.EncodeToString(der)); err == nil {
-				t.Fatal("weak RSA key was accepted")
+			ciphertext, err := encryptCredential("alice", "password", base64.StdEncoding.EncodeToString(der))
+			if err != nil {
+				t.Fatalf("observed minimum RSA key was rejected: %v", err)
+			}
+			ciphertextDER, err := base64.StdEncoding.DecodeString(ciphertext)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plaintext := decryptSmallSyntheticPKCS1v15(t, privateKey, ciphertextDER)
+			if string(plaintext) != "alicepassword" {
+				t.Fatalf("decrypted credential = %q", plaintext)
+			}
+		})
+	}
+}
+
+func TestEncryptCredentialRejectsRSAUnderCompatibilityFloor(t *testing.T) {
+	encodedKey := syntheticEncodedRSAKey(t, casRSAMinBits-1)
+	if _, err := encryptCredential("USERNAME-CANARY", "PASSWORD-CANARY", encodedKey); err == nil {
+		t.Fatal("RSA modulus below the compatibility floor was accepted")
+	} else {
+		assertErrorDoesNotContain(t, err, "USERNAME-CANARY")
+		assertErrorDoesNotContain(t, err, "PASSWORD-CANARY")
+		assertErrorDoesNotContain(t, err, encodedKey)
+	}
+}
+
+func TestEncryptCredentialEnforcesObservedMinimumPlaintextCapacity(t *testing.T) {
+	privateKey := generateSmallSyntheticRSAKey(t, casRSAMinBits)
+	der, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedKey := base64.StdEncoding.EncodeToString(der)
+	capacity := privateKey.Size() - 11
+	username := strings.Repeat("U", 12)
+	password := strings.Repeat("P", capacity-len(username))
+	if _, err := encryptCredential(username, password, encodedKey); err != nil {
+		t.Fatalf("credential at RSA capacity was rejected: %v", err)
+	}
+	password += "PASSWORD-CAPACITY-CANARY"
+	if _, err := encryptCredential(username, password, encodedKey); err == nil {
+		t.Fatal("credential over RSA capacity was accepted")
+	} else {
+		assertErrorDoesNotContain(t, err, username)
+		assertErrorDoesNotContain(t, err, password)
+		assertErrorDoesNotContain(t, err, encodedKey)
+	}
+}
+
+func TestSmallCASEncryptionRejectsInvalidPublicParameters(t *testing.T) {
+	modulus := new(big.Int).Lsh(big.NewInt(1), casRSAMinBits-1)
+	for name, publicKey := range map[string]*rsa.PublicKey{
+		"even modulus":   {N: modulus, E: 65537},
+		"even exponent":  {N: new(big.Int).SetBit(modulus, 0, 1), E: 2},
+		"large exponent": {N: new(big.Int).SetBit(modulus, 0, 1), E: 1 << 31},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := encryptSmallCASPKCS1v15(publicKey, []byte("CREDENTIAL-CANARY")); err == nil {
+				t.Fatal("invalid RSA public parameters were accepted")
+			} else {
+				assertErrorDoesNotContain(t, err, "CREDENTIAL-CANARY")
 			}
 		})
 	}
@@ -358,6 +415,71 @@ func syntheticEncodedRSAKey(t *testing.T, bits int) string {
 		t.Fatalf("synthetic RSA encoded length = %d, exceeds encoded limit", len(encodedKey))
 	}
 	return encodedKey
+}
+
+func generateSmallSyntheticRSAKey(t *testing.T, bits int) *rsa.PrivateKey {
+	t.Helper()
+	if bits < 32 || bits%2 != 0 {
+		t.Fatalf("invalid synthetic RSA size %d", bits)
+	}
+	one := big.NewInt(1)
+	exponent := big.NewInt(65537)
+	for {
+		p, err := rand.Prime(rand.Reader, bits/2)
+		if err != nil {
+			t.Fatalf("generate synthetic RSA prime: %v", err)
+		}
+		q, err := rand.Prime(rand.Reader, bits/2)
+		if err != nil {
+			t.Fatalf("generate synthetic RSA prime: %v", err)
+		}
+		if p.Cmp(q) == 0 {
+			continue
+		}
+		modulus := new(big.Int).Mul(p, q)
+		if modulus.BitLen() != bits {
+			continue
+		}
+		pMinusOne := new(big.Int).Sub(p, one)
+		qMinusOne := new(big.Int).Sub(q, one)
+		phi := new(big.Int).Mul(pMinusOne, qMinusOne)
+		privateExponent := new(big.Int).ModInverse(exponent, phi)
+		if privateExponent == nil {
+			continue
+		}
+		return &rsa.PrivateKey{
+			PublicKey: rsa.PublicKey{N: modulus, E: int(exponent.Int64())},
+			D:         privateExponent,
+			Primes:    []*big.Int{p, q},
+		}
+	}
+}
+
+func decryptSmallSyntheticPKCS1v15(t *testing.T, privateKey *rsa.PrivateKey, ciphertext []byte) []byte {
+	t.Helper()
+	if len(ciphertext) != privateKey.Size() {
+		t.Fatalf("ciphertext length = %d, want %d", len(ciphertext), privateKey.Size())
+	}
+	ciphertextInteger := new(big.Int).SetBytes(ciphertext)
+	if ciphertextInteger.Cmp(privateKey.N) >= 0 {
+		t.Fatal("ciphertext representative exceeds modulus")
+	}
+	message := new(big.Int).Exp(ciphertextInteger, privateKey.D, privateKey.N)
+	encoded := message.FillBytes(make([]byte, privateKey.Size()))
+	if len(encoded) < 11 || encoded[0] != 0 || encoded[1] != 2 {
+		t.Fatal("invalid PKCS#1 v1.5 encryption block prefix")
+	}
+	separator := -1
+	for index := 2; index < len(encoded); index++ {
+		if encoded[index] == 0 {
+			separator = index
+			break
+		}
+	}
+	if separator < 10 {
+		t.Fatal("invalid PKCS#1 v1.5 encryption padding")
+	}
+	return encoded[separator+1:]
 }
 
 func TestJavaScriptUTF16Length(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/cookiejar"
 	"net/netip"
@@ -28,8 +29,9 @@ const (
 	protocolCacheTTL    = 7 * 24 * time.Hour
 	casEncodedKeyLimit  = 8 << 10
 	casDERKeyLimit      = 4 << 10
-	casRSAMinBits       = 2048
+	casRSAMinBits       = 512
 	casRSAMaxBits       = 8192
+	casStandardMinBits  = 1024
 )
 
 type endpointSet struct {
@@ -278,9 +280,53 @@ func encryptCredential(username, password, encodedKey string) (string, error) {
 	if bits < casRSAMinBits || bits > casRSAMaxBits {
 		return "", fmt.Errorf("CAS RSA modulus must be between %d and %d bits", casRSAMinBits, casRSAMaxBits)
 	}
-	ciphertext, err := rsa.EncryptPKCS1v15(rand.Reader, publicKey, []byte(username+password))
+	plaintext := []byte(username + password)
+	var ciphertext []byte
+	if bits < casStandardMinBits {
+		ciphertext, err = encryptSmallCASPKCS1v15(publicKey, plaintext)
+	} else {
+		ciphertext, err = rsa.EncryptPKCS1v15(rand.Reader, publicKey, plaintext)
+	}
 	if err != nil {
 		return "", fmt.Errorf("encrypt credential: %w", err)
 	}
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// encryptSmallCASPKCS1v15 implements only the public-key operation required by
+// the official CAS RSA-512 wire envelope. Transport confidentiality and server
+// authentication remain the responsibility of the verified HTTPS connection;
+// see ADR-0014. Go deliberately rejects sub-1024-bit RSA keys in its general
+// crypto/rsa API, so this narrow compatibility path is kept separate from all
+// other RSA uses.
+func encryptSmallCASPKCS1v15(publicKey *rsa.PublicKey, plaintext []byte) ([]byte, error) {
+	if publicKey == nil || publicKey.N == nil || publicKey.N.Sign() <= 0 || publicKey.N.Bit(0) == 0 ||
+		publicKey.E < 3 || publicKey.E > 1<<31-1 || publicKey.E&1 == 0 {
+		return nil, fmt.Errorf("CAS RSA public key has invalid parameters")
+	}
+	size := publicKey.Size()
+	if len(plaintext) > size-11 {
+		return nil, rsa.ErrMessageTooLong
+	}
+
+	// EM = 0x00 || 0x02 || PS || 0x00 || M, where every PS byte is non-zero.
+	encoded := make([]byte, size)
+	encoded[1] = 2
+	padding := encoded[2 : size-len(plaintext)-1]
+	if _, err := io.ReadFull(rand.Reader, padding); err != nil {
+		return nil, fmt.Errorf("generate CAS RSA padding: %w", err)
+	}
+	for index := range padding {
+		for padding[index] == 0 {
+			if _, err := io.ReadFull(rand.Reader, padding[index:index+1]); err != nil {
+				return nil, fmt.Errorf("generate CAS RSA padding: %w", err)
+			}
+		}
+	}
+	copy(encoded[size-len(plaintext):], plaintext)
+
+	message := new(big.Int).SetBytes(encoded)
+	exponent := big.NewInt(int64(publicKey.E))
+	ciphertext := new(big.Int).Exp(message, exponent, publicKey.N)
+	return ciphertext.FillBytes(make([]byte, size)), nil
 }
